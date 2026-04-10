@@ -967,6 +967,26 @@ public class Truck {
         return headlightsEnabled;
     }
 
+    public boolean isForwardPressed() {
+        return forwardPressed;
+    }
+
+    public boolean isBackwardPressed() {
+        return backwardPressed;
+    }
+
+    public float getBrakeLightIntensity() {
+        return brakeLightIntensity;
+    }
+
+    public boolean isIndicatorRequested() {
+        return leftPressed ^ rightPressed;
+    }
+
+    public boolean isIndicatorBlinkOn() {
+        return ((int) (indicatorTimer * 2.8f)) % 2 == 0;
+    }
+
     public boolean isUsingImportedModel() {
         return importedModel.isLoaded();
     }

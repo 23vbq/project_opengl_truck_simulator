@@ -98,6 +98,10 @@ public class World {
         rainEnabled = enabled;
     }
 
+    public boolean isRainEnabled() {
+        return rainEnabled;
+    }
+
     public void setSkyPhase(float phase) {
         skyPhase = phase;
     }

@@ -27,6 +27,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
     private GL2 gl;
     private GLU glu;
     private World world;
+    private AudioEngine audioEngine;
     private GLCanvas canvas;
     private TextRenderer textRenderer;
 
@@ -44,6 +45,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
     private float currentHeadlightIntensity;
     private float currentNightFactor;
     private boolean headlightsEnabled;
+    private boolean audioEnabled;
     private boolean leftMouseDragging;
     private int lastMouseX;
     private int lastMouseY;
@@ -89,6 +91,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         rainEnabled = false;
         cabinViewEnabled = false;
         headlightsEnabled = false;
+        audioEnabled = true;
         cycleStartNanos = System.nanoTime();
         cyclePhaseOffset = 0.0f;
         thirdPersonOrbitYawDeg = 0.0f;
@@ -137,6 +140,10 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
 
         textRenderer = new TextRenderer(new Font("Monospaced", Font.PLAIN, 14), true, true);
 
+        audioEngine = new AudioEngine();
+        audioEngine.setEnabled(audioEnabled);
+        audioEngine.start();
+
         String renderer = gl.glGetString(GL2.GL_RENDERER);
         setTitle("Scania Driver | " + renderer);
     }
@@ -159,6 +166,11 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
 
         Truck truck = world.getTruck();
         truck.setHeadlightsEnabled(headlightsEnabled);
+        if (audioEngine != null) {
+            audioEngine.update(truck.getSpeed(), truck.isForwardPressed(), truck.isBackwardPressed(),
+                world.isRainEnabled(), truck.isIndicatorRequested(), truck.isIndicatorBlinkOn(),
+                truck.getBrakeLightIntensity());
+        }
         float headingRadians = (float) Math.toRadians(truck.getAngle());
         float headingX = (float) Math.sin(headingRadians);
         float headingZ = (float) Math.cos(headingRadians);
@@ -345,12 +357,16 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         textRenderer.draw("R - Rain", (int) panelX + 12, (int) panelY + 170);
         textRenderer.draw("T - Time Skip", (int) panelX + 12, (int) panelY + 188);
         textRenderer.draw("LMB Drag - Camera", (int) panelX + 12, (int) panelY + 206);
+        textRenderer.draw("M - Audio", (int) panelX + 12, (int) panelY + 224);
         textRenderer.endRendering();
     }
 
     @Override
     public void dispose(GLAutoDrawable drawable) {
-        // Nothing to dispose at this stage.
+        if (audioEngine != null) {
+            audioEngine.shutdown();
+            audioEngine = null;
+        }
     }
 
     @Override
@@ -445,6 +461,11 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
             cabinViewEnabled = !cabinViewEnabled;
         } else if (keyCode == KeyEvent.VK_L && pressed) {
             headlightsEnabled = !headlightsEnabled;
+        } else if (keyCode == KeyEvent.VK_M && pressed) {
+            audioEnabled = !audioEnabled;
+            if (audioEngine != null) {
+                audioEngine.setEnabled(audioEnabled);
+            }
         }
     }
 
