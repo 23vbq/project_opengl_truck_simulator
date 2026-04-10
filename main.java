@@ -28,6 +28,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     private boolean backwardPressed;
     private boolean leftPressed;
     private boolean rightPressed;
+    private boolean cabinViewEnabled;
 
     private boolean fogEnabled;
     private boolean rainEnabled;
@@ -68,6 +69,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         world = new World();
         fogEnabled = true;
         rainEnabled = false;
+        cabinViewEnabled = false;
         cycleStartNanos = System.nanoTime();
         cyclePhaseOffset = 0.0f;
 
@@ -112,20 +114,40 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         currentCelestialPhase = (elapsedSeconds / DAY_CYCLE_DURATION_SECONDS + cyclePhaseOffset) % 1.0f;
 
         Truck truck = world.getTruck();
-        float cameraDistance = 11.0f;
-        float cameraHeight = 5.0f;
-
         float headingRadians = (float) Math.toRadians(truck.getAngle());
         float headingX = (float) Math.sin(headingRadians);
         float headingZ = (float) Math.cos(headingRadians);
 
-        float cameraX = truck.getX() - headingX * cameraDistance;
-        float cameraY = truck.getY() + cameraHeight;
-        float cameraZ = truck.getZ() - headingZ * cameraDistance;
+        float cameraX;
+        float cameraY;
+        float cameraZ;
+        float targetX;
+        float targetY;
+        float targetZ;
 
-        float targetX = truck.getX() + headingX * 2.2f;
-        float targetY = truck.getY() + 1.05f;
-        float targetZ = truck.getZ() + headingZ * 2.2f;
+        if (cabinViewEnabled) {
+            cameraX = truck.getX() + headingX * 1.64f;
+            cameraY = truck.getY() + 1.30f;
+            cameraZ = truck.getZ() + headingZ * 1.64f;
+
+            float pitchRadians = (float) Math.toRadians(truck.getPitch());
+            float lookUp = (float) Math.sin(-pitchRadians) * 0.55f;
+            targetX = cameraX + headingX * 22.0f;
+            targetY = cameraY - 0.20f + lookUp;
+            targetZ = cameraZ + headingZ * 22.0f;
+        } else {
+            float cameraDistance = 11.0f;
+            float cameraHeight = 5.0f;
+
+            cameraX = truck.getX() - headingX * cameraDistance;
+            cameraY = truck.getY() + cameraHeight;
+            cameraZ = truck.getZ() - headingZ * cameraDistance;
+
+            targetX = truck.getX() + headingX * 2.2f;
+            targetY = truck.getY() + 1.05f;
+            targetZ = truck.getZ() + headingZ * 2.2f;
+        }
+
         glu.gluLookAt(cameraX, cameraY, cameraZ, targetX, targetY, targetZ, 0.0f, 1.0f, 0.0f);
 
         world.draw(gl);
@@ -185,6 +207,8 @@ public class main extends JFrame implements GLEventListener, KeyListener {
             fogEnabled = !fogEnabled;
         } else if (keyCode == KeyEvent.VK_R && pressed) {
             rainEnabled = !rainEnabled;
+        } else if (keyCode == KeyEvent.VK_C && pressed) {
+            cabinViewEnabled = !cabinViewEnabled;
         }
     }
 

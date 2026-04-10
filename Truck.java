@@ -95,8 +95,13 @@ public class Truck {
         gl.glColor3f(0.86f, 0.11f, 0.11f);
         drawCuboid(gl, -0.95f, 0.5f, 1.35f, 0.95f, 1.12f, 1.85f);
 
-        gl.glColor3f(0.10f, 0.12f, 0.16f);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glDepthMask(false);
+        gl.glColor4f(0.20f, 0.30f, 0.38f, 0.42f);
         drawCuboid(gl, -0.78f, 0.72f, 1.82f, 0.78f, 1.02f, 1.86f);
+        gl.glDepthMask(true);
+        gl.glDisable(GL2.GL_BLEND);
 
         gl.glColor3f(0.80f, 0.09f, 0.09f);
         drawCuboid(gl, -0.72f, 1.35f, 0.15f, 0.72f, 1.53f, 1.25f);
