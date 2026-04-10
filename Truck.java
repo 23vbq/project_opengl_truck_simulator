@@ -12,6 +12,9 @@ public class Truck {
     private float tilt;
     private float pitch;
     private float wheelSpin;
+    private float suspensionOffset;
+    private float suspensionPhase;
+    private float brakeLightIntensity;
 
     private boolean forwardPressed;
     private boolean backwardPressed;
@@ -63,12 +66,13 @@ public class Truck {
         updateSteering();
         updatePosition(heightMap, trees);
         updateBodyAlignment(heightMap, road);
+        updateSuspension();
         updateWheelAnimation();
     }
 
     public void draw(GL2 gl) {
         gl.glPushMatrix();
-        gl.glTranslatef(x, y, z);
+        gl.glTranslatef(x, y + suspensionOffset, z);
         gl.glRotatef(angle, 0.0f, 1.0f, 0.0f);
         gl.glRotatef(pitch, 1.0f, 0.0f, 0.0f);
         gl.glRotatef(-tilt, 0.0f, 0.0f, 1.0f);
@@ -86,6 +90,34 @@ public class Truck {
 
         gl.glColor3f(0.15f, 0.15f, 0.16f);
         drawCuboid(gl, -0.92f, -0.42f, -1.75f, 0.92f, -0.18f, 1.75f);
+
+        drawRearLights(gl);
+    }
+
+    private void drawRearLights(GL2 gl) {
+        float lit = clamp(brakeLightIntensity, 0.0f, 1.0f);
+        float red = 0.26f + 0.74f * lit;
+        float greenBlue = 0.02f + 0.02f * lit;
+
+        gl.glColor3f(red, greenBlue, greenBlue);
+        drawCuboid(gl, -0.98f, 0.04f, -2.04f, -0.58f, 0.28f, -1.96f);
+        drawCuboid(gl, 0.58f, 0.04f, -2.04f, 0.98f, 0.28f, -1.96f);
+
+        if (lit > 0.01f) {
+            gl.glDisable(GL2.GL_LIGHTING);
+            gl.glEnable(GL2.GL_BLEND);
+            gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+            gl.glDepthMask(false);
+
+            float glowAlpha = 0.10f + lit * 0.34f;
+            gl.glColor4f(1.0f, 0.10f, 0.08f, glowAlpha);
+            drawCuboid(gl, -1.03f, -0.01f, -2.08f, -0.53f, 0.34f, -1.90f);
+            drawCuboid(gl, 0.53f, -0.01f, -2.08f, 1.03f, 0.34f, -1.90f);
+
+            gl.glDepthMask(true);
+            gl.glDisable(GL2.GL_BLEND);
+            gl.glEnable(GL2.GL_LIGHTING);
+        }
     }
 
     private void drawCabin(GL2 gl) {
@@ -229,6 +261,8 @@ public class Truck {
     }
 
     private void updateSpeed() {
+        boolean brakingForward = backwardPressed && speed > 0.2f;
+
         if (forwardPressed) {
             speed += ACCELERATION * UPDATE_DT;
         }
@@ -250,6 +284,20 @@ public class Truck {
         }
 
         speed = clamp(speed, MAX_REVERSE_SPEED, MAX_FORWARD_SPEED);
+
+        float brakeTarget = brakingForward ? 1.0f : 0.0f;
+        brakeLightIntensity = approach(brakeLightIntensity, brakeTarget, 5.5f * UPDATE_DT);
+    }
+
+    private void updateSuspension() {
+        float speedAbs = Math.abs(speed);
+        float roughness = clamp((Math.abs(pitch) + Math.abs(tilt)) / 20.0f, 0.0f, 1.0f);
+        float amplitude = 0.004f + speedAbs * 0.0012f + roughness * 0.009f;
+        amplitude = clamp(amplitude, 0.004f, 0.028f);
+
+        suspensionPhase += (3.4f + speedAbs * 0.55f + roughness * 8.0f) * UPDATE_DT;
+        float targetOffset = (float) Math.sin(suspensionPhase) * amplitude;
+        suspensionOffset = approach(suspensionOffset, targetOffset, 0.08f);
     }
 
     private void updateSteering() {
