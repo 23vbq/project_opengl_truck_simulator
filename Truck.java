@@ -28,7 +28,7 @@ public class Truck {
     private boolean rightPressed;
 
     private static final float UPDATE_DT = 1.0f / 60.0f;
-    private static final float ACCELERATION = 24.0f;
+    private static final float ACCELERATION = 10.0f;
     private static final float BRAKE_ACCELERATION = 36.0f;
     private static final float DRAG = 14.0f;
     private static final float TURN_RATE = 96.0f;
@@ -40,13 +40,19 @@ public class Truck {
     private static final float TREE_TRUNK_COLLISION_FACTOR = 0.30f;
     private static final int MIN_GEAR = -3;
     private static final int MAX_GEAR = 6;
-    // Max wheel speeds for each gear at MAX_RPM (m/s). 6th maps to ~60 km/h at ~1000 RPM.
-    private static final float[] FORWARD_GEAR_SPEEDS = { 0.0f, 5.8f, 10.1f, 15.9f, 22.4f, 31.8f, 43.3f };
-    private static final float[] REVERSE_GEAR_SPEEDS = { 0.0f, 4.8f, 8.2f, 11.2f };
-    private static final float[] FORWARD_GEAR_ACCEL = { 0.0f, 1.80f, 1.20f, 0.75f, 0.48f, 0.34f, 0.24f };
-    private static final float[] REVERSE_GEAR_ACCEL = { 0.0f, 1.10f, 0.75f, 0.50f };
-    private static final float[] FORWARD_LAUNCH_TRACTION = { 0.0f, 1.00f, 0.68f, 0.26f, 0.15f, 0.10f, 0.07f };
-    private static final float[] REVERSE_LAUNCH_TRACTION = { 0.0f, 0.90f, 0.50f, 0.28f };
+    // Max wheel speeds for each gear at MAX_RPM (m/s). Gear ratios typical for heavy truck.
+    // 1: 15 km/h, 2: 30, 3: 55, 4: 85, 5: 110, 6: 140 km/h
+    private static final float[] FORWARD_GEAR_SPEEDS = { 0.0f, 4.17f, 8.33f, 15.28f, 23.61f, 30.56f, 38.89f };
+    private static final float[] REVERSE_GEAR_SPEEDS = { 0.0f, 2.78f, 5.56f, 9.72f };
+    private static final float[] FORWARD_GEAR_ACCEL = { 0.0f, 0.55f, 0.42f, 0.32f, 0.52f, 0.33f, 0.20f };
+    private static final float[] REVERSE_GEAR_ACCEL = { 0.0f, 1.40f, 0.90f, 0.55f };
+    // From gear 3 upward launching from standstill is impossible
+    private static final float[] FORWARD_LAUNCH_TRACTION = { 0.0f, 1.00f, 0.55f, 0.00f, 0.00f, 0.00f, 0.00f };
+    private static final float[] REVERSE_LAUNCH_TRACTION = { 0.0f, 0.90f, 0.40f, 0.00f };
+    // Idle creep speed per gear (m/s): truck always rolls at minimum speed without braking.
+    // 1: ~2 km/h, 2: ~4, 3: ~6, 4: ~7, 5: ~8, 6: ~9 km/h
+    private static final float[] FORWARD_IDLE_CREEP = { 0.0f, 0.55f, 1.11f, 1.67f, 1.94f, 2.22f, 2.50f };
+    private static final float[] REVERSE_IDLE_CREEP = { 0.0f, 0.50f, 0.90f, 1.30f };
     private static final float IDLE_RPM = 650.0f;
     private static final float MAX_RPM = 2600.0f;
     private static final float RPM_RISE_RATE = 1900.0f;
@@ -721,6 +727,7 @@ public class Truck {
 
         float throttle = forwardPressed ? 1.0f : 0.0f;
         if (currentGear == 0) {
+            // Neutral: RPM follows throttle only, no drive force
             float neutralTargetRpm = IDLE_RPM + throttle * (MAX_RPM - IDLE_RPM);
             float rpmStep = (neutralTargetRpm > engineRpm ? RPM_RISE_RATE : RPM_FALL_RATE) * UPDATE_DT;
             engineRpm = approach(engineRpm, neutralTargetRpm, rpmStep);
@@ -736,27 +743,15 @@ public class Truck {
             int gearAbs = Math.abs(currentGear);
             float gearMaxSpeed = currentGear > 0 ? FORWARD_GEAR_SPEEDS[gearAbs] : REVERSE_GEAR_SPEEDS[gearAbs];
             float speedAbs = Math.abs(speed);
-            float wheelDrivenRpm = clamp(speedAbs / Math.max(0.001f, gearMaxSpeed), 0.0f, 1.0f) * MAX_RPM;
-
-            float lowSpeedLoad = 0.0f;
-            if (speedAbs < 2.5f) {
-                float lowSpeedFactor = 1.0f - speedAbs / 2.5f;
-                lowSpeedLoad = Math.max(0, gearAbs - 1) * 0.23f * lowSpeedFactor;
-            }
-
-            float throttleEffective = clamp(throttle - lowSpeedLoad, 0.0f, 1.0f);
-            float throttleTargetRpm = IDLE_RPM + throttleEffective * (MAX_RPM - IDLE_RPM);
-            float coupledTargetRpm = Math.max(IDLE_RPM, Math.max(wheelDrivenRpm * 0.94f, throttleTargetRpm));
-
-            float rpmStep = (coupledTargetRpm > engineRpm ? RPM_RISE_RATE : RPM_FALL_RATE) * UPDATE_DT;
-            engineRpm = approach(engineRpm, coupledTargetRpm, rpmStep);
-
-            float rpmRatio = clamp(engineRpm / MAX_RPM, IDLE_RPM / MAX_RPM, 1.0f);
-
             float driveSign = currentGear > 0 ? 1.0f : -1.0f;
-            float targetSpeed = driveSign * gearMaxSpeed * rpmRatio;
+
+            // RPM is directly coupled to wheel speed through the gearbox (mechanical lock)
+            // wheelRpm = speedAbs / gearMaxSpeed * MAX_RPM
+            float wheelDrivenRpm = speedAbs / Math.max(0.001f, gearMaxSpeed) * MAX_RPM;
+            engineRpm = approach(engineRpm, Math.max(IDLE_RPM, wheelDrivenRpm), 4000.0f * UPDATE_DT);
 
             if (forwardPressed) {
+                // Throttle: push speed toward gear's max speed
                 float accelMul = currentGear > 0 ? FORWARD_GEAR_ACCEL[gearAbs] : REVERSE_GEAR_ACCEL[gearAbs];
                 float launchTraction = 1.0f;
                 if (speedAbs < 1.8f) {
@@ -767,10 +762,24 @@ public class Truck {
                     }
                     launchTraction = clamp(launchTraction, 0.02f, 1.0f);
                 }
-                speed = approach(speed, targetSpeed, ACCELERATION * accelMul * launchTraction * UPDATE_DT);
+                // Torque curve: very weak below ~900 RPM, builds up sharply from 1000-1800 RPM
+                // At 650 RPM (idle): ~5% torque. At 1200 RPM: ~65%. At 1800+ RPM: 100%.
+                float rpmFactor = clamp((engineRpm - 650.0f) / (1800.0f - 650.0f), 0.0f, 1.0f);
+                rpmFactor = rpmFactor * rpmFactor; // quadratic — very little torque at low RPM
+                rpmFactor = 0.05f + rpmFactor * 0.95f;
+                speed = approach(speed, driveSign * gearMaxSpeed, ACCELERATION * accelMul * launchTraction * rpmFactor * UPDATE_DT);
             } else {
-                float coastTarget = targetSpeed * (currentGear > 0 ? 0.92f : 0.86f);
-                speed = approach(speed, coastTarget, (DRAG * 0.45f) * UPDATE_DT);
+                // No throttle: idle creep on low gears, engine braking on high gears
+                float idleCreep = currentGear > 0 ? FORWARD_IDLE_CREEP[gearAbs] : REVERSE_IDLE_CREEP[gearAbs];
+                float creepTarget = driveSign * idleCreep;
+                if (idleCreep > 0.0f && Math.abs(speed) <= idleCreep + 0.05f) {
+                    // Gently push toward creep speed (idle torque carries the truck)
+                    speed = approach(speed, creepTarget, DRAG * 0.15f * UPDATE_DT);
+                } else {
+                    // Engine braking: stronger in higher gears (compression resistance)
+                    float engineBrakeFactor = 0.08f + 0.50f * ((float)(gearAbs - 1) / Math.max(1, MAX_GEAR - 1));
+                    speed = approach(speed, creepTarget, DRAG * engineBrakeFactor * UPDATE_DT);
+                }
             }
 
             if (backwardPressed) {
@@ -820,18 +829,27 @@ public class Truck {
     }
 
     public void shiftUp() {
-        float before = engineRpm;
         currentGear = Math.min(MAX_GEAR, currentGear + 1);
-        if (currentGear > 0 && before > IDLE_RPM) {
-            engineRpm = clamp(before * 0.72f, IDLE_RPM, MAX_RPM);
+        // RPM must instantly reflect new gear ratio at current wheel speed
+        if (currentGear != 0) {
+            int gearAbs = Math.abs(currentGear);
+            float newMaxSpeed = currentGear > 0 ? FORWARD_GEAR_SPEEDS[gearAbs] : REVERSE_GEAR_SPEEDS[gearAbs];
+            engineRpm = clamp(Math.abs(speed) / Math.max(0.001f, newMaxSpeed) * MAX_RPM, IDLE_RPM, MAX_RPM);
+        } else {
+            engineRpm = IDLE_RPM;
         }
     }
 
     public void shiftDown() {
-        float before = engineRpm;
         currentGear = Math.max(MIN_GEAR, currentGear - 1);
-        if (currentGear > 0 && before > IDLE_RPM) {
-            engineRpm = clamp(before * 1.20f, IDLE_RPM, MAX_RPM);
+        // RPM must instantly reflect new gear ratio at current wheel speed
+        // If downshifting too fast, RPM is capped at MAX_RPM (over-rev protection)
+        if (currentGear != 0) {
+            int gearAbs = Math.abs(currentGear);
+            float newMaxSpeed = currentGear > 0 ? FORWARD_GEAR_SPEEDS[gearAbs] : REVERSE_GEAR_SPEEDS[gearAbs];
+            engineRpm = clamp(Math.abs(speed) / Math.max(0.001f, newMaxSpeed) * MAX_RPM, IDLE_RPM, MAX_RPM);
+        } else {
+            engineRpm = IDLE_RPM;
         }
     }
 

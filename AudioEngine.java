@@ -15,6 +15,7 @@ public class AudioEngine {
     private volatile boolean enabled;
 
     private volatile float speed;
+    private volatile float rpm;
     private volatile boolean accelerating;
     private volatile boolean reversing;
     private volatile boolean rainEnabled;
@@ -81,9 +82,10 @@ public class AudioEngine {
         this.enabled = enabled;
     }
 
-    public void update(float speed, boolean accelerating, boolean reversing, boolean rainEnabled,
+    public void update(float speed, float rpm, boolean accelerating, boolean reversing, boolean rainEnabled,
             boolean indicatorRequested, boolean indicatorBlinkOn, float brakeIntensity) {
         this.speed = speed;
+        this.rpm = rpm;
         this.accelerating = accelerating;
         this.reversing = reversing;
         this.rainEnabled = rainEnabled;
@@ -137,29 +139,30 @@ public class AudioEngine {
         }
         lastBlinkOn = localIndicatorBlinkOn && localIndicatorRequested;
 
-        float normalizedSpeed = clamp(localSpeed / 18.0f, 0.0f, 1.0f);
+        float localRpm = rpm;
         float throttle = localAccelerating ? 1.0f : (localReversing ? 0.75f : 0.25f);
-        float targetEngine = 0.22f + normalizedSpeed * 0.62f + throttle * 0.18f;
+        float rpmNormalized = clamp((localRpm - 650.0f) / (2600.0f - 650.0f), 0.0f, 1.0f);
+        // Volume driven by real RPM
+        float targetEngine = 0.22f + rpmNormalized * 0.62f + throttle * 0.18f;
         engineSmooth += (targetEngine - engineSmooth) * 0.035f;
 
-        // Synthetic V8 profile: low idle foundation + pulse train + harmonics.
-        float rpmNormalized = clamp(0.14f + normalizedSpeed * 0.48f + throttle * 0.12f, 0.0f, 1.0f);
-        float engineRevHz = 2.2f + rpmNormalized * 21.0f;
+        // Scania V8 profile: frequency and harmonics driven by real RPM
+        float engineRevHz = 2.5f + rpmNormalized * 21.0f;
         float engineFreqA = engineRevHz;
         float engineFreqB = engineRevHz * 2.01f;
         float engineFreqC = engineRevHz * 3.02f;
         float engineFreqD = engineRevHz * 0.50f;
         float firingFreq = engineRevHz * 0.8f;
 
-        float turboTarget = (0.02f + normalizedSpeed * 0.04f)
-            + (localAccelerating ? (0.08f + normalizedSpeed * 0.14f) : 0.0f);
+        float turboTarget = (0.005f + rpmNormalized * 0.015f)
+            + (localAccelerating ? (0.02f + rpmNormalized * 0.04f) : 0.0f);
         if (localReversing) {
             turboTarget *= 0.6f;
         }
         turboSmooth += (turboTarget - turboSmooth) * 0.018f;
 
-        float whistleLoad = clamp(turboSmooth * 4.2f + throttle * 0.08f, 0.0f, 1.0f);
-        float turboWhistleFreq = 900.0f + whistleLoad * 1200.0f + normalizedSpeed * 180.0f;
+        float whistleLoad = clamp(turboSmooth * 4.2f + throttle * 0.04f, 0.0f, 1.0f);
+        float turboWhistleFreq = 900.0f + whistleLoad * 1200.0f + rpmNormalized * 180.0f;
 
         float rainTarget = localRainEnabled ? 0.32f : 0.0f;
         rainSmooth += (rainTarget - rainSmooth) * 0.01f;
@@ -193,11 +196,14 @@ public class AudioEngine {
                     rumblePhase -= TWO_PI;
                 }
 
-                float pulseA = pulseFromPhase(firingPhase, 0.56f);
-                float pulseB = pulseFromPhase(firingPhase + 1.05f, 0.52f);
+                // V8 cross-plane firing: 8 pulses per cycle with alternating short/long gaps
+                // Offsets in radians: 0, π/4, π, 5π/4  (gaps: π/4, 3π/4, π/4, 3π/4...)
+                float p1 = pulseFromPhase(firingPhase,               0.38f);
+                float p2 = pulseFromPhase(firingPhase + 0.785f,      0.35f);
+                float p3 = pulseFromPhase(firingPhase + (float)Math.PI,       0.38f);
+                float p4 = pulseFromPhase(firingPhase + (float)Math.PI + 0.785f, 0.35f);
 
-                // Strong gate between ignition hits, so engine is punchy instead of continuous.
-                float pulseMix = clamp(pulseA * 1.05f + pulseB * 0.95f, 0.0f, 1.2f);
+                float pulseMix = clamp((p1 + p2 + p3 + p4) * 0.55f, 0.0f, 1.2f);
                 float gateDepth = 0.82f - rpmNormalized * 0.22f;
                 float pulseGate = (1.0f - gateDepth) + gateDepth * pulseMix;
 
@@ -206,15 +212,15 @@ public class AudioEngine {
                         + (float) Math.sin(enginePhaseB) * 0.23f
                         + (float) Math.sin(enginePhaseC) * 0.12f
                         + (float) Math.sin(enginePhaseD) * 0.22f;
-                float combustion = (pulseA * 0.58f + pulseB * 0.52f) - 0.24f;
+                float combustion = (p1 * 0.60f + p2 * 0.55f + p3 * 0.60f + p4 * 0.55f) - 0.24f;
 
                 float engineTone = (harmonic + combustion) * loping * pulseGate;
-                float driveGain = 0.84f + throttle * 0.30f + normalizedSpeed * 0.10f;
+                float driveGain = 0.90f + throttle * 0.35f + rpmNormalized * 0.20f;
                 float engine = softClip(engineTone * engineSmooth * driveGain);
-                sample += engine * 0.92f;
+                sample += engine * 1.20f;
 
-                float thump = ((pulseA * 0.92f + pulseB * 0.86f) - 0.20f) * (0.48f + throttle * 0.32f);
-                sample += softClip(thump) * 0.36f;
+                float thump = ((p1 * 0.85f + p2 * 0.78f + p3 * 0.85f + p4 * 0.78f) - 0.20f) * (0.55f + throttle * 0.35f);
+                sample += softClip(thump) * 0.50f;
 
                 float rainNoise = (noiseRandom.nextFloat() * 2.0f - 1.0f);
                 brakeNoiseSmooth = brakeNoiseSmooth * 0.86f + rainNoise * 0.14f;
@@ -223,7 +229,7 @@ public class AudioEngine {
                 float turboNoise = (noiseRandom.nextFloat() * 2.0f - 1.0f);
                 turboNoiseLow = turboNoiseLow * 0.90f + turboNoise * 0.10f;
                 float turboHiss = turboNoise - turboNoiseLow;
-                sample += turboHiss * turboSmooth * 0.12f;
+                sample += turboHiss * turboSmooth * 0.06f;
 
                 turboWhistlePhase += (float) (TWO_PI * turboWhistleFreq / SAMPLE_RATE);
                 if (turboWhistlePhase > TWO_PI) {
@@ -231,7 +237,7 @@ public class AudioEngine {
                 }
 
                 float whistleTone = (float) Math.sin(turboWhistlePhase);
-                float whistle = whistleTone * (0.004f + whistleLoad * 0.030f);
+                float whistle = whistleTone * (0.001f + whistleLoad * 0.012f);
                 sample += whistle;
 
                 if (localBrake > 0.05f) {

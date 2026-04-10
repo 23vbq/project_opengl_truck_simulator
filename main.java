@@ -147,7 +147,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         audioEngine.start();
 
         String renderer = gl.glGetString(GL2.GL_RENDERER);
-        setTitle("Scania Driver | " + renderer);
+        setTitle("Scania V8 Simulator - ETS3 in 1 night | " + renderer);
     }
 
     @Override
@@ -169,7 +169,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         Truck truck = world.getTruck();
         truck.setHeadlightsEnabled(headlightsEnabled);
         if (audioEngine != null) {
-            audioEngine.update(truck.getSpeed(), truck.isForwardPressed(), truck.getCurrentGear() < 0,
+            audioEngine.update(truck.getSpeed(), truck.getEstimatedRpm(), truck.isForwardPressed(), truck.getCurrentGear() < 0,
                 world.isRainEnabled(), truck.isIndicatorRequested(), truck.isIndicatorBlinkOn(),
                 truck.getBrakeLightIntensity());
         }
