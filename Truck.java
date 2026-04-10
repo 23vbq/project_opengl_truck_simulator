@@ -16,8 +16,10 @@ public class Truck {
     private float suspensionPhase;
     private float brakeLightIntensity;
     private float reverseLightIntensity;
+    private float engineRpm;
     private boolean headlightsEnabled;
     private float indicatorTimer;
+    private int currentGear;
     private final GltfModel importedModel;
 
     private boolean forwardPressed;
@@ -26,8 +28,6 @@ public class Truck {
     private boolean rightPressed;
 
     private static final float UPDATE_DT = 1.0f / 60.0f;
-    private static final float MAX_FORWARD_SPEED = 18.0f;
-    private static final float MAX_REVERSE_SPEED = -7.0f;
     private static final float ACCELERATION = 24.0f;
     private static final float BRAKE_ACCELERATION = 36.0f;
     private static final float DRAG = 14.0f;
@@ -38,6 +38,19 @@ public class Truck {
     private static final float GROUND_CLEARANCE = 0.015f;
     private static final float TRUCK_COLLISION_RADIUS = 1.05f;
     private static final float TREE_TRUNK_COLLISION_FACTOR = 0.30f;
+    private static final int MIN_GEAR = -3;
+    private static final int MAX_GEAR = 6;
+    // Max wheel speeds for each gear at MAX_RPM (m/s). 6th maps to ~60 km/h at ~1000 RPM.
+    private static final float[] FORWARD_GEAR_SPEEDS = { 0.0f, 5.8f, 10.1f, 15.9f, 22.4f, 31.8f, 43.3f };
+    private static final float[] REVERSE_GEAR_SPEEDS = { 0.0f, 4.8f, 8.2f, 11.2f };
+    private static final float[] FORWARD_GEAR_ACCEL = { 0.0f, 1.80f, 1.20f, 0.75f, 0.48f, 0.34f, 0.24f };
+    private static final float[] REVERSE_GEAR_ACCEL = { 0.0f, 1.10f, 0.75f, 0.50f };
+    private static final float[] FORWARD_LAUNCH_TRACTION = { 0.0f, 1.00f, 0.68f, 0.26f, 0.15f, 0.10f, 0.07f };
+    private static final float[] REVERSE_LAUNCH_TRACTION = { 0.0f, 0.90f, 0.50f, 0.28f };
+    private static final float IDLE_RPM = 650.0f;
+    private static final float MAX_RPM = 2600.0f;
+    private static final float RPM_RISE_RATE = 1900.0f;
+    private static final float RPM_FALL_RATE = 1300.0f;
 
     private static final float[][] WHEEL_OFFSETS = {
             { -1.05f, 1.25f },
@@ -51,6 +64,8 @@ public class Truck {
     public Truck() {
         this.x = 50.0f;
         this.z = 50.0f;
+        this.currentGear = 0;
+        this.engineRpm = IDLE_RPM;
         this.importedModel = new GltfModel("models/scene.gltf");
     }
 
@@ -702,34 +717,79 @@ public class Truck {
     }
 
     private void updateSpeed() {
-        boolean brakingForward = backwardPressed && speed > 0.2f;
+        boolean braking = backwardPressed && Math.abs(speed) > 0.08f;
 
-        if (forwardPressed) {
-            speed += ACCELERATION * UPDATE_DT;
-        }
+        float throttle = forwardPressed ? 1.0f : 0.0f;
+        if (currentGear == 0) {
+            float neutralTargetRpm = IDLE_RPM + throttle * (MAX_RPM - IDLE_RPM);
+            float rpmStep = (neutralTargetRpm > engineRpm ? RPM_RISE_RATE : RPM_FALL_RATE) * UPDATE_DT;
+            engineRpm = approach(engineRpm, neutralTargetRpm, rpmStep);
 
-        if (backwardPressed) {
-            if (speed > 0.0f) {
-                speed -= BRAKE_ACCELERATION * UPDATE_DT;
-            } else {
-                speed -= ACCELERATION * UPDATE_DT;
-            }
-        }
-
-        if (!forwardPressed && !backwardPressed) {
-            if (speed > 0.0f) {
+            if (backwardPressed) {
+                speed = approach(speed, 0.0f, BRAKE_ACCELERATION * UPDATE_DT);
+            } else if (speed > 0.0f) {
                 speed = Math.max(0.0f, speed - DRAG * UPDATE_DT);
             } else if (speed < 0.0f) {
                 speed = Math.min(0.0f, speed + DRAG * UPDATE_DT);
             }
+        } else {
+            int gearAbs = Math.abs(currentGear);
+            float gearMaxSpeed = currentGear > 0 ? FORWARD_GEAR_SPEEDS[gearAbs] : REVERSE_GEAR_SPEEDS[gearAbs];
+            float speedAbs = Math.abs(speed);
+            float wheelDrivenRpm = clamp(speedAbs / Math.max(0.001f, gearMaxSpeed), 0.0f, 1.0f) * MAX_RPM;
+
+            float lowSpeedLoad = 0.0f;
+            if (speedAbs < 2.5f) {
+                float lowSpeedFactor = 1.0f - speedAbs / 2.5f;
+                lowSpeedLoad = Math.max(0, gearAbs - 1) * 0.23f * lowSpeedFactor;
+            }
+
+            float throttleEffective = clamp(throttle - lowSpeedLoad, 0.0f, 1.0f);
+            float throttleTargetRpm = IDLE_RPM + throttleEffective * (MAX_RPM - IDLE_RPM);
+            float coupledTargetRpm = Math.max(IDLE_RPM, Math.max(wheelDrivenRpm * 0.94f, throttleTargetRpm));
+
+            float rpmStep = (coupledTargetRpm > engineRpm ? RPM_RISE_RATE : RPM_FALL_RATE) * UPDATE_DT;
+            engineRpm = approach(engineRpm, coupledTargetRpm, rpmStep);
+
+            float rpmRatio = clamp(engineRpm / MAX_RPM, IDLE_RPM / MAX_RPM, 1.0f);
+
+            float driveSign = currentGear > 0 ? 1.0f : -1.0f;
+            float targetSpeed = driveSign * gearMaxSpeed * rpmRatio;
+
+            if (forwardPressed) {
+                float accelMul = currentGear > 0 ? FORWARD_GEAR_ACCEL[gearAbs] : REVERSE_GEAR_ACCEL[gearAbs];
+                float launchTraction = 1.0f;
+                if (speedAbs < 1.8f) {
+                    if (currentGear > 0) {
+                        launchTraction = FORWARD_LAUNCH_TRACTION[gearAbs] + speedAbs * 0.20f;
+                    } else {
+                        launchTraction = REVERSE_LAUNCH_TRACTION[gearAbs] + speedAbs * 0.16f;
+                    }
+                    launchTraction = clamp(launchTraction, 0.02f, 1.0f);
+                }
+                speed = approach(speed, targetSpeed, ACCELERATION * accelMul * launchTraction * UPDATE_DT);
+            } else {
+                float coastTarget = targetSpeed * (currentGear > 0 ? 0.92f : 0.86f);
+                speed = approach(speed, coastTarget, (DRAG * 0.45f) * UPDATE_DT);
+            }
+
+            if (backwardPressed) {
+                speed = approach(speed, 0.0f, BRAKE_ACCELERATION * UPDATE_DT);
+            }
+
+            if (currentGear > 0) {
+                speed = clamp(speed, 0.0f, gearMaxSpeed);
+            } else {
+                speed = clamp(speed, -gearMaxSpeed, 0.0f);
+            }
         }
 
-        speed = clamp(speed, MAX_REVERSE_SPEED, MAX_FORWARD_SPEED);
+        engineRpm = clamp(engineRpm, IDLE_RPM, MAX_RPM);
 
-        float brakeTarget = brakingForward ? 1.0f : 0.0f;
+        float brakeTarget = braking ? 1.0f : 0.0f;
         brakeLightIntensity = approach(brakeLightIntensity, brakeTarget, 5.5f * UPDATE_DT);
 
-        float reverseTarget = speed < -0.15f ? 1.0f : 0.0f;
+        float reverseTarget = currentGear < 0 ? 1.0f : 0.0f;
         reverseLightIntensity = approach(reverseLightIntensity, reverseTarget, 4.6f * UPDATE_DT);
     }
 
@@ -754,9 +814,51 @@ public class Truck {
         }
 
         if (Math.abs(speed) > 0.05f && steerInput != 0.0f) {
-            float speedFactor = Math.max(0.25f, Math.min(1.0f, Math.abs(speed) / MAX_FORWARD_SPEED));
+            float speedFactor = Math.max(0.25f, Math.min(1.0f, Math.abs(speed) / FORWARD_GEAR_SPEEDS[MAX_GEAR]));
             angle += steerInput * TURN_RATE * speedFactor * UPDATE_DT * (speed >= 0.0f ? 1.0f : -1.0f);
         }
+    }
+
+    public void shiftUp() {
+        float before = engineRpm;
+        currentGear = Math.min(MAX_GEAR, currentGear + 1);
+        if (currentGear > 0 && before > IDLE_RPM) {
+            engineRpm = clamp(before * 0.72f, IDLE_RPM, MAX_RPM);
+        }
+    }
+
+    public void shiftDown() {
+        float before = engineRpm;
+        currentGear = Math.max(MIN_GEAR, currentGear - 1);
+        if (currentGear > 0 && before > IDLE_RPM) {
+            engineRpm = clamp(before * 1.20f, IDLE_RPM, MAX_RPM);
+        }
+    }
+
+    public int getCurrentGear() {
+        return currentGear;
+    }
+
+    public String getCurrentGearLabel() {
+        if (currentGear == 0) {
+            return "N";
+        }
+        if (currentGear > 0) {
+            return Integer.toString(currentGear);
+        }
+        return "R" + Math.abs(currentGear);
+    }
+
+    public float getSpeedKmh() {
+        return Math.abs(speed) * 3.6f;
+    }
+
+    public float getEstimatedRpm() {
+        return engineRpm;
+    }
+
+    public boolean isEngineStalled() {
+        return false;
     }
 
     private void updatePosition(HeightMap heightMap, List<Tree> trees) {

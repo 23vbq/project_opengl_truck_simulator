@@ -30,6 +30,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
     private AudioEngine audioEngine;
     private GLCanvas canvas;
     private TextRenderer textRenderer;
+    private TextRenderer largeTextRenderer;
 
     private boolean forwardPressed;
     private boolean backwardPressed;
@@ -139,6 +140,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         gl.glLightf(GL2.GL_LIGHT1, GL2.GL_QUADRATIC_ATTENUATION, 0.0035f);
 
         textRenderer = new TextRenderer(new Font("Monospaced", Font.PLAIN, 14), true, true);
+        largeTextRenderer = new TextRenderer(new Font("Monospaced", Font.BOLD, 24), true, true);
 
         audioEngine = new AudioEngine();
         audioEngine.setEnabled(audioEnabled);
@@ -167,7 +169,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         Truck truck = world.getTruck();
         truck.setHeadlightsEnabled(headlightsEnabled);
         if (audioEngine != null) {
-            audioEngine.update(truck.getSpeed(), truck.isForwardPressed(), truck.isBackwardPressed(),
+            audioEngine.update(truck.getSpeed(), truck.isForwardPressed(), truck.getCurrentGear() < 0,
                 world.isRainEnabled(), truck.isIndicatorRequested(), truck.isIndicatorBlinkOn(),
                 truck.getBrakeLightIntensity());
         }
@@ -276,7 +278,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         world.draw(gl);
         world.drawCelestialBodies(gl, currentCelestialPhase);
 
-        drawControlsUI(drawable);
+        drawControlsUI(drawable, truck);
         gl.glFlush();
     }
 
@@ -296,7 +298,7 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         gl.glMatrixMode(GL2.GL_MODELVIEW);
     }
 
-    private void drawControlsUI(GLAutoDrawable drawable) {
+    private void drawControlsUI(GLAutoDrawable drawable, Truck truck) {
         int width = drawable.getSurfaceWidth();
         int height = drawable.getSurfaceHeight();
 
@@ -313,25 +315,120 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         gl.glEnable(GL2.GL_BLEND);
         gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 
-        float panelX = 12.0f;
-        float panelY = (float) height - 240.0f - 12.0f;
-        float panelW = 320.0f;
-        float panelH = 240.0f;
+        float controlPanelX = 12.0f;
+        float controlPanelY = (float) height - 240.0f - 12.0f;
+        float controlPanelW = 320.0f;
+        float controlPanelH = 240.0f;
+
+        float drivePanelX = 12.0f;
+        float drivePanelY = 12.0f;
+        float drivePanelW = 372.0f;
+        float drivePanelH = 132.0f;
+
+        float rpm = truck.getEstimatedRpm();
+        float rpmMax = 2600.0f;
+        float rpmRatio = clamp01(rpm / rpmMax);
+        float speedKmh = truck.getSpeedKmh();
+        float speedMax = 78.0f;
+        float speedRatio = clamp01(speedKmh / speedMax);
 
         gl.glColor4f(0.04f, 0.04f, 0.06f, 0.78f);
         gl.glBegin(GL2.GL_QUADS);
-        gl.glVertex2f(panelX, panelY);
-        gl.glVertex2f(panelX + panelW, panelY);
-        gl.glVertex2f(panelX + panelW, panelY + panelH);
-        gl.glVertex2f(panelX, panelY + panelH);
+        gl.glVertex2f(controlPanelX, controlPanelY);
+        gl.glVertex2f(controlPanelX + controlPanelW, controlPanelY);
+        gl.glVertex2f(controlPanelX + controlPanelW, controlPanelY + controlPanelH);
+        gl.glVertex2f(controlPanelX, controlPanelY + controlPanelH);
+        gl.glEnd();
+
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glVertex2f(drivePanelX, drivePanelY);
+        gl.glVertex2f(drivePanelX + drivePanelW, drivePanelY);
+        gl.glVertex2f(drivePanelX + drivePanelW, drivePanelY + drivePanelH);
+        gl.glVertex2f(drivePanelX, drivePanelY + drivePanelH);
         gl.glEnd();
 
         gl.glColor4f(0.35f, 0.35f, 0.38f, 0.5f);
         gl.glBegin(GL2.GL_LINE_LOOP);
-        gl.glVertex2f(panelX, panelY);
-        gl.glVertex2f(panelX + panelW, panelY);
-        gl.glVertex2f(panelX + panelW, panelY + panelH);
-        gl.glVertex2f(panelX, panelY + panelH);
+        gl.glVertex2f(controlPanelX, controlPanelY);
+        gl.glVertex2f(controlPanelX + controlPanelW, controlPanelY);
+        gl.glVertex2f(controlPanelX + controlPanelW, controlPanelY + controlPanelH);
+        gl.glVertex2f(controlPanelX, controlPanelY + controlPanelH);
+        gl.glEnd();
+
+        gl.glBegin(GL2.GL_LINE_LOOP);
+        gl.glVertex2f(drivePanelX, drivePanelY);
+        gl.glVertex2f(drivePanelX + drivePanelW, drivePanelY);
+        gl.glVertex2f(drivePanelX + drivePanelW, drivePanelY + drivePanelH);
+        gl.glVertex2f(drivePanelX, drivePanelY + drivePanelH);
+        gl.glEnd();
+
+        float tachX = drivePanelX + 18.0f;
+        float tachY = drivePanelY + 76.0f;
+        float tachW = 212.0f;
+        float tachH = 22.0f;
+
+        gl.glColor4f(0.09f, 0.11f, 0.14f, 0.92f);
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glVertex2f(tachX, tachY);
+        gl.glVertex2f(tachX + tachW, tachY);
+        gl.glVertex2f(tachX + tachW, tachY + tachH);
+        gl.glVertex2f(tachX, tachY + tachH);
+        gl.glEnd();
+
+        float redZoneX = tachX + tachW * 0.84f;
+        gl.glColor4f(0.46f, 0.07f, 0.08f, 0.88f);
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glVertex2f(redZoneX, tachY);
+        gl.glVertex2f(tachX + tachW, tachY);
+        gl.glVertex2f(tachX + tachW, tachY + tachH);
+        gl.glVertex2f(redZoneX, tachY + tachH);
+        gl.glEnd();
+
+        float fillW = tachW * rpmRatio;
+        gl.glColor4f(0.86f, 0.88f, 0.92f, 0.96f);
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glVertex2f(tachX, tachY + 1.5f);
+        gl.glVertex2f(tachX + fillW, tachY + 1.5f);
+        gl.glVertex2f(tachX + fillW, tachY + tachH - 1.5f);
+        gl.glVertex2f(tachX, tachY + tachH - 1.5f);
+        gl.glEnd();
+
+        gl.glColor4f(0.40f, 0.43f, 0.48f, 0.85f);
+        gl.glBegin(GL2.GL_LINE_LOOP);
+        gl.glVertex2f(tachX, tachY);
+        gl.glVertex2f(tachX + tachW, tachY);
+        gl.glVertex2f(tachX + tachW, tachY + tachH);
+        gl.glVertex2f(tachX, tachY + tachH);
+        gl.glEnd();
+
+        float speedX = drivePanelX + 18.0f;
+        float speedY = drivePanelY + 34.0f;
+        float speedW = 212.0f;
+        float speedH = 22.0f;
+
+        gl.glColor4f(0.09f, 0.11f, 0.14f, 0.92f);
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glVertex2f(speedX, speedY);
+        gl.glVertex2f(speedX + speedW, speedY);
+        gl.glVertex2f(speedX + speedW, speedY + speedH);
+        gl.glVertex2f(speedX, speedY + speedH);
+        gl.glEnd();
+
+        float speedFillW = speedW * speedRatio;
+        gl.glColor4f(0.66f, 0.84f, 0.95f, 0.94f);
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glVertex2f(speedX, speedY + 1.5f);
+        gl.glVertex2f(speedX + speedFillW, speedY + 1.5f);
+        gl.glVertex2f(speedX + speedFillW, speedY + speedH - 1.5f);
+        gl.glVertex2f(speedX, speedY + speedH - 1.5f);
+        gl.glEnd();
+
+        gl.glColor4f(0.40f, 0.43f, 0.48f, 0.85f);
+        gl.glBegin(GL2.GL_LINE_LOOP);
+        gl.glVertex2f(speedX, speedY);
+        gl.glVertex2f(speedX + speedW, speedY);
+        gl.glVertex2f(speedX + speedW, speedY + speedH);
+        gl.glVertex2f(speedX, speedY + speedH);
         gl.glEnd();
 
         gl.glDisable(GL2.GL_BLEND);
@@ -345,20 +442,37 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
 
         textRenderer.setColor(0.85f, 0.88f, 0.92f, 0.95f);
         textRenderer.beginRendering(width, height);
-        textRenderer.draw("SCANIA DRIVER", (int) panelX + 12, (int) panelY + 20);
+        textRenderer.draw("SCANIA DRIVER", (int) controlPanelX + 12, (int) controlPanelY + 20);
         textRenderer.setColor(0.60f, 0.68f, 0.78f, 0.90f);
-        textRenderer.draw("W/UP - Forward", (int) panelX + 12, (int) panelY + 44);
-        textRenderer.draw("S/DN - Reverse", (int) panelX + 12, (int) panelY + 62);
-        textRenderer.draw("A/LF - Turn Left", (int) panelX + 12, (int) panelY + 80);
-        textRenderer.draw("D/RT - Turn Right", (int) panelX + 12, (int) panelY + 98);
-        textRenderer.draw("C - Cabin View", (int) panelX + 12, (int) panelY + 116);
-        textRenderer.draw("L - Lights", (int) panelX + 12, (int) panelY + 134);
-        textRenderer.draw("F - Fog", (int) panelX + 12, (int) panelY + 152);
-        textRenderer.draw("R - Rain", (int) panelX + 12, (int) panelY + 170);
-        textRenderer.draw("T - Time Skip", (int) panelX + 12, (int) panelY + 188);
-        textRenderer.draw("LMB Drag - Camera", (int) panelX + 12, (int) panelY + 206);
-        textRenderer.draw("M - Audio", (int) panelX + 12, (int) panelY + 224);
+        textRenderer.draw("RPM", (int) tachX, (int) tachY + 24);
+        textRenderer.draw((int) rpm + " / 2600", (int) tachX + 112, (int) tachY + 24);
+        textRenderer.draw("SPEED", (int) speedX, (int) speedY + 24);
+        textRenderer.draw((int) speedKmh + " km/h", (int) speedX + 112, (int) speedY + 24);
+
+        textRenderer.draw("W/UP - Throttle", (int) controlPanelX + 12, (int) controlPanelY + 44);
+        textRenderer.draw("S/DN - Brake", (int) controlPanelX + 12, (int) controlPanelY + 62);
+        textRenderer.draw("Shift - Gear Up", (int) controlPanelX + 12, (int) controlPanelY + 80);
+        textRenderer.draw("Ctrl - Gear Down", (int) controlPanelX + 12, (int) controlPanelY + 98);
+        textRenderer.draw("A/LF - Turn Left", (int) controlPanelX + 12, (int) controlPanelY + 116);
+        textRenderer.draw("D/RT - Turn Right", (int) controlPanelX + 12, (int) controlPanelY + 134);
+        textRenderer.draw("C - Cabin View", (int) controlPanelX + 12, (int) controlPanelY + 152);
+        textRenderer.draw("L - Lights", (int) controlPanelX + 12, (int) controlPanelY + 170);
+        textRenderer.draw("F - Fog", (int) controlPanelX + 12, (int) controlPanelY + 188);
+        textRenderer.draw("R - Rain", (int) controlPanelX + 12, (int) controlPanelY + 206);
+        textRenderer.draw("M - Audio", (int) controlPanelX + 12, (int) controlPanelY + 224);
+        textRenderer.draw("LMB Drag - Camera", (int) controlPanelX + 168, (int) controlPanelY + 224);
         textRenderer.endRendering();
+
+        largeTextRenderer.beginRendering(width, height);
+        largeTextRenderer.setColor(0.88f, 0.92f, 0.98f, 0.98f);
+        largeTextRenderer.draw("GEAR", (int) drivePanelX + 258, (int) drivePanelY + 92);
+        largeTextRenderer.setColor(0.95f, 0.96f, 0.98f, 1.0f);
+        largeTextRenderer.draw(truck.getCurrentGearLabel(), (int) drivePanelX + 300, (int) drivePanelY + 48);
+        if (truck.isEngineStalled()) {
+            largeTextRenderer.setColor(0.92f, 0.28f, 0.22f, 0.98f);
+            largeTextRenderer.draw("STALL", (int) drivePanelX + 246, (int) drivePanelY + 18);
+        }
+        largeTextRenderer.endRendering();
     }
 
     @Override
@@ -366,6 +480,14 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         if (audioEngine != null) {
             audioEngine.shutdown();
             audioEngine = null;
+        }
+        if (textRenderer != null) {
+            textRenderer.dispose();
+            textRenderer = null;
+        }
+        if (largeTextRenderer != null) {
+            largeTextRenderer.dispose();
+            largeTextRenderer = null;
         }
     }
 
@@ -451,6 +573,14 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
             leftPressed = pressed;
         } else if (keyCode == KeyEvent.VK_RIGHT || keyCode == KeyEvent.VK_D) {
             rightPressed = pressed;
+        } else if (keyCode == KeyEvent.VK_SHIFT && pressed) {
+            if (world != null) {
+                world.getTruck().shiftUp();
+            }
+        } else if (keyCode == KeyEvent.VK_CONTROL && pressed) {
+            if (world != null) {
+                world.getTruck().shiftDown();
+            }
         } else if (keyCode == KeyEvent.VK_T && pressed) {
             cyclePhaseOffset = (cyclePhaseOffset + 0.25f) % 1.0f;
         } else if (keyCode == KeyEvent.VK_F && pressed) {
