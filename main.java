@@ -1,5 +1,6 @@
 import java.awt.Dimension;
 import java.awt.EventQueue;
+import java.awt.Font;
 import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
@@ -14,6 +15,7 @@ import com.jogamp.opengl.GLProfile;
 import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
+import com.jogamp.opengl.util.awt.TextRenderer;
 
 public class main extends JFrame implements GLEventListener, KeyListener {
 
@@ -23,6 +25,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     private GLU glu;
     private World world;
     private GLCanvas canvas;
+    private TextRenderer textRenderer;
 
     private boolean forwardPressed;
     private boolean backwardPressed;
@@ -115,6 +118,8 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         gl.glLightf(GL2.GL_LIGHT1, GL2.GL_CONSTANT_ATTENUATION, 1.0f);
         gl.glLightf(GL2.GL_LIGHT1, GL2.GL_LINEAR_ATTENUATION, 0.055f);
         gl.glLightf(GL2.GL_LIGHT1, GL2.GL_QUADRATIC_ATTENUATION, 0.008f);
+
+        textRenderer = new TextRenderer(new Font("Monospaced", Font.PLAIN, 14), true, true);
 
         String renderer = gl.glGetString(GL2.GL_RENDERER);
         setTitle("Scania Driver | " + renderer);
@@ -210,6 +215,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         world.draw(gl);
         world.drawCelestialBodies(gl, currentCelestialPhase);
 
+        drawControlsUI(drawable);
         gl.glFlush();
     }
 
@@ -227,6 +233,69 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         glu.gluPerspective(55.0f, aspect, 0.1f, 600.0f);
 
         gl.glMatrixMode(GL2.GL_MODELVIEW);
+    }
+
+    private void drawControlsUI(GLAutoDrawable drawable) {
+        int width = drawable.getSurfaceWidth();
+        int height = drawable.getSurfaceHeight();
+
+        gl.glMatrixMode(GL2.GL_PROJECTION);
+        gl.glPushMatrix();
+        gl.glLoadIdentity();
+        gl.glOrtho(0.0, width, 0.0, height, -1.0, 1.0);
+        gl.glMatrixMode(GL2.GL_MODELVIEW);
+        gl.glPushMatrix();
+        gl.glLoadIdentity();
+
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glDisable(GL2.GL_DEPTH_TEST);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+
+        float panelX = 12.0f;
+        float panelY = (float) height - 240.0f - 12.0f;
+        float panelW = 320.0f;
+        float panelH = 240.0f;
+
+        gl.glColor4f(0.04f, 0.04f, 0.06f, 0.78f);
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glVertex2f(panelX, panelY);
+        gl.glVertex2f(panelX + panelW, panelY);
+        gl.glVertex2f(panelX + panelW, panelY + panelH);
+        gl.glVertex2f(panelX, panelY + panelH);
+        gl.glEnd();
+
+        gl.glColor4f(0.35f, 0.35f, 0.38f, 0.5f);
+        gl.glBegin(GL2.GL_LINE_LOOP);
+        gl.glVertex2f(panelX, panelY);
+        gl.glVertex2f(panelX + panelW, panelY);
+        gl.glVertex2f(panelX + panelW, panelY + panelH);
+        gl.glVertex2f(panelX, panelY + panelH);
+        gl.glEnd();
+
+        gl.glDisable(GL2.GL_BLEND);
+        gl.glEnable(GL2.GL_DEPTH_TEST);
+        gl.glEnable(GL2.GL_LIGHTING);
+
+        gl.glMatrixMode(GL2.GL_PROJECTION);
+        gl.glPopMatrix();
+        gl.glMatrixMode(GL2.GL_MODELVIEW);
+        gl.glPopMatrix();
+
+        textRenderer.setColor(0.85f, 0.88f, 0.92f, 0.95f);
+        textRenderer.beginRendering(width, height);
+        textRenderer.draw("SCANIA DRIVER", (int) panelX + 12, (int) panelY + 20);
+        textRenderer.setColor(0.60f, 0.68f, 0.78f, 0.90f);
+        textRenderer.draw("W/UP - Forward", (int) panelX + 12, (int) panelY + 44);
+        textRenderer.draw("S/DN - Reverse", (int) panelX + 12, (int) panelY + 62);
+        textRenderer.draw("A/LF - Turn Left", (int) panelX + 12, (int) panelY + 80);
+        textRenderer.draw("D/RT - Turn Right", (int) panelX + 12, (int) panelY + 98);
+        textRenderer.draw("C - Cabin View", (int) panelX + 12, (int) panelY + 116);
+        textRenderer.draw("L - Lights", (int) panelX + 12, (int) panelY + 134);
+        textRenderer.draw("F - Fog", (int) panelX + 12, (int) panelY + 152);
+        textRenderer.draw("R - Rain", (int) panelX + 12, (int) panelY + 170);
+        textRenderer.draw("T - Time Skip", (int) panelX + 12, (int) panelY + 188);
+        textRenderer.endRendering();
     }
 
     @Override
