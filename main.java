@@ -4,6 +4,9 @@ import java.awt.Font;
 import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionListener;
 
 import javax.swing.JFrame;
 
@@ -17,7 +20,7 @@ import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
 import com.jogamp.opengl.util.awt.TextRenderer;
 
-public class main extends JFrame implements GLEventListener, KeyListener {
+public class main extends JFrame implements GLEventListener, KeyListener, MouseListener, MouseMotionListener {
 
     private static final long serialVersionUID = 1L;
 
@@ -41,6 +44,13 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     private float currentHeadlightIntensity;
     private float currentNightFactor;
     private boolean headlightsEnabled;
+    private boolean leftMouseDragging;
+    private int lastMouseX;
+    private int lastMouseY;
+    private float thirdPersonOrbitYawDeg;
+    private float thirdPersonOrbitPitchDeg;
+    private float firstPersonLookYawDeg;
+    private float firstPersonLookPitchDeg;
 
     private static final float DAY_CYCLE_DURATION_SECONDS = 120.0f;
     private static final float[] KEY_TIMES = { 0.00f, 0.25f, 0.50f, 0.75f, 1.00f };
@@ -58,6 +68,8 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         canvas = new GLCanvas(capabilities);
         canvas.addGLEventListener(this);
         canvas.addKeyListener(this);
+        canvas.addMouseListener(this);
+        canvas.addMouseMotionListener(this);
         canvas.setFocusable(true);
 
         add(canvas);
@@ -79,6 +91,10 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         headlightsEnabled = false;
         cycleStartNanos = System.nanoTime();
         cyclePhaseOffset = 0.0f;
+        thirdPersonOrbitYawDeg = 0.0f;
+        thirdPersonOrbitPitchDeg = 0.0f;
+        firstPersonLookYawDeg = 0.0f;
+        firstPersonLookPitchDeg = 0.0f;
 
         gl.glEnable(GL2.GL_DEPTH_TEST);
         gl.glDisable(GL2.GL_CULL_FACE);
@@ -155,6 +171,9 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         float targetX;
         float targetY;
         float targetZ;
+        float upX = 0.0f;
+        float upY = 1.0f;
+        float upZ = 0.0f;
 
         if (cabinViewEnabled) {
             float seatLocalX = truck.isUsingImportedModel() ? 0.7f : 0.0f;
@@ -175,6 +194,30 @@ public class main extends JFrame implements GLEventListener, KeyListener {
             forwardDir[0] /= dirLen;
             forwardDir[1] /= dirLen;
             forwardDir[2] /= dirLen;
+
+            float[] cameraUp = normalizeVector(truck.localDirectionToWorld(0.0f, 1.0f, 0.0f));
+            if (vectorLength(cameraUp) < 0.0001f) {
+                cameraUp = new float[] { 0.0f, 1.0f, 0.0f };
+            }
+
+            forwardDir = rotateAroundAxis(forwardDir, cameraUp, (float) Math.toRadians(firstPersonLookYawDeg));
+            float[] cameraRight = normalizeVector(cross(cameraUp, forwardDir));
+            if (vectorLength(cameraRight) < 0.0001f) {
+                cameraRight = new float[] { rightX, 0.0f, rightZ };
+            }
+            forwardDir = rotateAroundAxis(forwardDir, cameraRight, (float) Math.toRadians(firstPersonLookPitchDeg));
+            forwardDir = normalizeVector(forwardDir);
+
+            cameraRight = normalizeVector(cross(cameraUp, forwardDir));
+            if (vectorLength(cameraRight) < 0.0001f) {
+                cameraRight = new float[] { rightX, 0.0f, rightZ };
+            }
+            float[] finalUp = normalizeVector(cross(forwardDir, cameraRight));
+            if (vectorLength(finalUp) >= 0.0001f) {
+                upX = finalUp[0];
+                upY = finalUp[1];
+                upZ = finalUp[2];
+            }
 
             cameraX = seatPos[0];
             cameraY = seatPos[1];
@@ -198,18 +241,23 @@ public class main extends JFrame implements GLEventListener, KeyListener {
             targetZ += rightZ * lateralShake;
         } else {
             float cameraDistance = 11.0f;
-            float cameraHeight = 5.0f;
+            float orbitYawDeg = truck.getAngle() + 180.0f + thirdPersonOrbitYawDeg;
+            float orbitPitchDeg = clamp(-5.0f, 65.0f, 22.0f + thirdPersonOrbitPitchDeg);
 
-            cameraX = truck.getX() - headingX * cameraDistance;
-            cameraY = truck.getY() + cameraHeight;
-            cameraZ = truck.getZ() - headingZ * cameraDistance;
+            float orbitYawRad = (float) Math.toRadians(orbitYawDeg);
+            float orbitPitchRad = (float) Math.toRadians(orbitPitchDeg);
+            float horizontalDistance = (float) Math.cos(orbitPitchRad) * cameraDistance;
 
-            targetX = truck.getX() + headingX * 2.2f;
-            targetY = truck.getY() + 1.05f;
-            targetZ = truck.getZ() + headingZ * 2.2f;
+            cameraX = truck.getX() + (float) Math.sin(orbitYawRad) * horizontalDistance;
+            cameraY = truck.getY() + 1.20f + (float) Math.sin(orbitPitchRad) * cameraDistance;
+            cameraZ = truck.getZ() + (float) Math.cos(orbitYawRad) * horizontalDistance;
+
+            targetX = truck.getX() + headingX * 0.8f;
+            targetY = truck.getY() + 1.10f;
+            targetZ = truck.getZ() + headingZ * 0.8f;
         }
 
-        glu.gluLookAt(cameraX, cameraY, cameraZ, targetX, targetY, targetZ, 0.0f, 1.0f, 0.0f);
+        glu.gluLookAt(cameraX, cameraY, cameraZ, targetX, targetY, targetZ, upX, upY, upZ);
 
         applyTruckHeadlights(truck, headingX, headingZ);
 
@@ -296,6 +344,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         textRenderer.draw("F - Fog", (int) panelX + 12, (int) panelY + 152);
         textRenderer.draw("R - Rain", (int) panelX + 12, (int) panelY + 170);
         textRenderer.draw("T - Time Skip", (int) panelX + 12, (int) panelY + 188);
+        textRenderer.draw("LMB Drag - Camera", (int) panelX + 12, (int) panelY + 206);
         textRenderer.endRendering();
     }
 
@@ -317,6 +366,64 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     @Override
     public void keyReleased(KeyEvent e) {
         updateKeyState(e.getKeyCode(), false);
+    }
+
+    @Override
+    public void mouseClicked(MouseEvent e) {
+        // No action needed.
+    }
+
+    @Override
+    public void mousePressed(MouseEvent e) {
+        if (e.getButton() == MouseEvent.BUTTON1) {
+            leftMouseDragging = true;
+            lastMouseX = e.getX();
+            lastMouseY = e.getY();
+        }
+    }
+
+    @Override
+    public void mouseReleased(MouseEvent e) {
+        if (e.getButton() == MouseEvent.BUTTON1) {
+            leftMouseDragging = false;
+        }
+    }
+
+    @Override
+    public void mouseEntered(MouseEvent e) {
+        // No action needed.
+    }
+
+    @Override
+    public void mouseExited(MouseEvent e) {
+        leftMouseDragging = false;
+    }
+
+    @Override
+    public void mouseDragged(MouseEvent e) {
+        if (!leftMouseDragging) {
+            return;
+        }
+
+        int mouseX = e.getX();
+        int mouseY = e.getY();
+        int dx = mouseX - lastMouseX;
+        int dy = mouseY - lastMouseY;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+
+        if (cabinViewEnabled) {
+            firstPersonLookYawDeg = clamp(-120.0f, 120.0f, firstPersonLookYawDeg + dx * 0.22f);
+            firstPersonLookPitchDeg = clamp(-55.0f, 55.0f, firstPersonLookPitchDeg - dy * 0.18f);
+        } else {
+            thirdPersonOrbitYawDeg += dx * 0.26f;
+            thirdPersonOrbitPitchDeg = clamp(-25.0f, 35.0f, thirdPersonOrbitPitchDeg - dy * 0.18f);
+        }
+    }
+
+    @Override
+    public void mouseMoved(MouseEvent e) {
+        // No action needed.
     }
 
     private void updateKeyState(int keyCode, boolean pressed) {
@@ -485,8 +592,49 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         return a + (b - a) * t;
     }
 
+    private float clamp(float min, float max, float value) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private float clamp01(float value) {
         return Math.max(0.0f, Math.min(1.0f, value));
+    }
+
+    private float[] cross(float[] a, float[] b) {
+        return new float[] {
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0]
+        };
+    }
+
+    private float vectorLength(float[] v) {
+        return (float) Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    }
+
+    private float[] normalizeVector(float[] v) {
+        float len = vectorLength(v);
+        if (len < 0.0001f) {
+            return new float[] { 0.0f, 0.0f, 0.0f };
+        }
+        return new float[] { v[0] / len, v[1] / len, v[2] / len };
+    }
+
+    private float[] rotateAroundAxis(float[] v, float[] axis, float angleRad) {
+        float[] n = normalizeVector(axis);
+        if (vectorLength(n) < 0.0001f) {
+            return new float[] { v[0], v[1], v[2] };
+        }
+
+        float cos = (float) Math.cos(angleRad);
+        float sin = (float) Math.sin(angleRad);
+        float dot = v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
+
+        return new float[] {
+            v[0] * cos + (n[1] * v[2] - n[2] * v[1]) * sin + n[0] * dot * (1.0f - cos),
+            v[1] * cos + (n[2] * v[0] - n[0] * v[2]) * sin + n[1] * dot * (1.0f - cos),
+            v[2] * cos + (n[0] * v[1] - n[1] * v[0]) * sin + n[2] * dot * (1.0f - cos)
+        };
     }
 
     public static void main(String[] args) {
