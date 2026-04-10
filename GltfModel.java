@@ -101,9 +101,7 @@ public class GltfModel {
         gl.glTranslatef(offsetX, offsetY, offsetZ);
         gl.glScalef(fitScale, fitScale, fitScale);
 
-        gl.glDisable(GL2.GL_LIGHTING);
         gl.glCallList(displayListId);
-        gl.glEnable(GL2.GL_LIGHTING);
 
         gl.glPopMatrix();
     }
@@ -500,9 +498,9 @@ public class GltfModel {
         float height = Math.max(0.0001f, boundsMaxY - boundsMinY);
         float length = Math.max(0.0001f, boundsMaxZ - boundsMinZ);
 
-        float targetWidth = 2.05f;
-        float targetHeight = 2.15f;
-        float targetLength = 4.05f;
+        float targetWidth = 4.10f;
+        float targetHeight = 4.30f;
+        float targetLength = 8.10f;
 
         fitScale = Math.min(targetWidth / width, Math.min(targetHeight / height, targetLength / length));
 

@@ -15,6 +15,9 @@ public class Truck {
     private float suspensionOffset;
     private float suspensionPhase;
     private float brakeLightIntensity;
+    private float reverseLightIntensity;
+    private boolean headlightsEnabled;
+    private float indicatorTimer;
     private final GltfModel importedModel;
 
     private boolean forwardPressed;
@@ -70,6 +73,7 @@ public class Truck {
         updateBodyAlignment(heightMap, road);
         updateSuspension();
         updateWheelAnimation();
+        indicatorTimer += UPDATE_DT;
     }
 
     public void draw(GL2 gl) {
@@ -81,6 +85,8 @@ public class Truck {
 
         if (importedModel.isLoaded()) {
             importedModel.draw(gl);
+            drawFrontLightMarkers(gl);
+            drawRearLights(gl);
         } else {
             drawChassis(gl);
             drawCabin(gl);
@@ -101,29 +107,248 @@ public class Truck {
     }
 
     private void drawRearLights(GL2 gl) {
-        float lit = clamp(brakeLightIntensity, 0.0f, 1.0f);
-        float red = 0.26f + 0.74f * lit;
-        float greenBlue = 0.02f + 0.02f * lit;
+        boolean imported = importedModel.isLoaded();
+        float lightScale = imported ? 2.0f : 1.0f;
+        float tailPosIntensity = headlightsEnabled ? 0.36f : 0.0f;
+        float brake = clamp(brakeLightIntensity, 0.0f, 1.0f);
 
-        gl.glColor3f(red, greenBlue, greenBlue);
-        drawCuboid(gl, -0.98f, 0.04f, -2.04f, -0.58f, 0.28f, -1.96f);
-        drawCuboid(gl, 0.58f, 0.04f, -2.04f, 0.98f, 0.28f, -1.96f);
+        boolean blinkOn = ((int) (indicatorTimer * 2.8f)) % 2 == 0;
+        // Steering is mapped oppositely in yaw update, so blinkers are swapped to match visual turn direction.
+        float leftIndicator = rightPressed && !leftPressed && blinkOn ? 1.0f : 0.0f;
+        float rightIndicator = leftPressed && !rightPressed && blinkOn ? 1.0f : 0.0f;
 
-        if (lit > 0.01f) {
-            gl.glDisable(GL2.GL_LIGHTING);
+        float tailRed = 0.12f + 0.62f * tailPosIntensity;
+        float tailGreenBlue = 0.01f + 0.02f * tailPosIntensity;
+        float stopRed = 0.26f + 0.74f * brake;
+        float stopGreenBlue = 0.02f + 0.02f * brake;
+
+        float rearOuterX0 = -0.98f * lightScale;
+        float rearOuterX1 = -0.58f * lightScale;
+        float rearOuterX2 = 0.58f * lightScale;
+        float rearOuterX3 = 0.98f * lightScale;
+
+        float rearY0 = 0.04f * lightScale;
+        float rearY1 = 0.28f * lightScale;
+        float rearZ0 = -2.04f * lightScale;
+        float rearZ1 = -1.96f * lightScale;
+
+        float rearGlowX0 = -1.03f * lightScale;
+        float rearGlowX1 = -0.53f * lightScale;
+        float rearGlowX2 = 0.53f * lightScale;
+        float rearGlowX3 = 1.03f * lightScale;
+        float rearGlowY0 = -0.01f * lightScale;
+        float rearGlowY1 = 0.34f * lightScale;
+        float rearGlowZ0 = -2.08f * lightScale;
+        float rearGlowZ1 = -1.90f * lightScale;
+
+        float stopLeftX0 = -0.90f * lightScale;
+        float stopLeftX1 = -0.66f * lightScale;
+        float stopRightX0 = 0.66f * lightScale;
+        float stopRightX1 = 0.90f * lightScale;
+        float stopY0 = 0.08f * lightScale;
+        float stopY1 = 0.24f * lightScale;
+        float stopZ0 = -2.05f * lightScale;
+        float stopZ1 = -1.95f * lightScale;
+
+        float stopGlowLeftX0 = -0.94f * lightScale;
+        float stopGlowLeftX1 = -0.62f * lightScale;
+        float stopGlowRightX0 = 0.62f * lightScale;
+        float stopGlowRightX1 = 0.94f * lightScale;
+        float stopGlowY0 = 0.04f * lightScale;
+        float stopGlowY1 = 0.28f * lightScale;
+        float stopGlowZ0 = -2.10f * lightScale;
+        float stopGlowZ1 = -1.88f * lightScale;
+
+        float reverseX0 = -0.38f * lightScale;
+        float reverseX1 = -0.15f * lightScale;
+        float reverseX2 = 0.15f * lightScale;
+        float reverseX3 = 0.38f * lightScale;
+        float reverseY0 = 0.06f * lightScale;
+        float reverseY1 = 0.22f * lightScale;
+        float reverseZ0 = -2.04f * lightScale;
+        float reverseZ1 = -1.96f * lightScale;
+
+        float reverseGlowX0 = -0.43f * lightScale;
+        float reverseGlowX1 = -0.10f * lightScale;
+        float reverseGlowX2 = 0.10f * lightScale;
+        float reverseGlowX3 = 0.43f * lightScale;
+        float reverseGlowY0 = 0.02f * lightScale;
+        float reverseGlowY1 = 0.28f * lightScale;
+        float reverseGlowZ0 = -2.08f * lightScale;
+        float reverseGlowZ1 = -1.90f * lightScale;
+
+        if (imported) {
+            rearOuterX0 = -1.12f;
+            rearOuterX1 = -0.80f;
+            rearOuterX2 = 0.80f;
+            rearOuterX3 = 1.12f;
+            rearY0 = -0.50f;
+            rearY1 = -0.30f;
+            rearZ0 = -4.23f;
+            rearZ1 = -4.09f;
+
+            rearGlowX0 = -1.16f;
+            rearGlowX1 = -0.76f;
+            rearGlowX2 = 0.76f;
+            rearGlowX3 = 1.16f;
+            rearGlowY0 = -0.56f;
+            rearGlowY1 = -0.22f;
+            rearGlowZ0 = -4.28f;
+            rearGlowZ1 = -4.01f;
+
+            stopLeftX0 = -1.08f;
+            stopLeftX1 = -0.84f;
+            stopRightX0 = 0.84f;
+            stopRightX1 = 1.08f;
+            stopY0 = -0.48f;
+            stopY1 = -0.32f;
+            stopZ0 = -4.22f;
+            stopZ1 = -4.08f;
+
+            stopGlowLeftX0 = -1.12f;
+            stopGlowLeftX1 = -0.80f;
+            stopGlowRightX0 = 0.80f;
+            stopGlowRightX1 = 1.12f;
+            stopGlowY0 = -0.54f;
+            stopGlowY1 = -0.26f;
+            stopGlowZ0 = -4.27f;
+            stopGlowZ1 = -4.00f;
+
+            reverseX0 = -0.48f;
+            reverseX1 = -0.30f;
+            reverseX2 = 0.30f;
+            reverseX3 = 0.48f;
+            reverseY0 = -0.50f;
+            reverseY1 = -0.34f;
+            reverseZ0 = -4.22f;
+            reverseZ1 = -4.10f;
+
+            reverseGlowX0 = -0.52f;
+            reverseGlowX1 = -0.26f;
+            reverseGlowX2 = 0.26f;
+            reverseGlowX3 = 0.52f;
+            reverseGlowY0 = -0.55f;
+            reverseGlowY1 = -0.30f;
+            reverseGlowZ0 = -4.27f;
+            reverseGlowZ1 = -4.02f;
+        }
+
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glColor3f(tailRed, tailGreenBlue, tailGreenBlue);
+        drawCuboid(gl, rearOuterX0, rearY0, rearZ0, rearOuterX1, rearY1, rearZ1);
+        drawCuboid(gl, rearOuterX2, rearY0, rearZ0, rearOuterX3, rearY1, rearZ1);
+
+        if (tailPosIntensity > 0.01f) {
             gl.glEnable(GL2.GL_BLEND);
             gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
             gl.glDepthMask(false);
 
-            float glowAlpha = 0.10f + lit * 0.34f;
+            float glowAlpha = (imported ? 0.09f : 0.05f) + tailPosIntensity * (imported ? 0.26f : 0.18f);
             gl.glColor4f(1.0f, 0.10f, 0.08f, glowAlpha);
-            drawCuboid(gl, -1.03f, -0.01f, -2.08f, -0.53f, 0.34f, -1.90f);
-            drawCuboid(gl, 0.53f, -0.01f, -2.08f, 1.03f, 0.34f, -1.90f);
+            drawCuboid(gl, rearGlowX0, rearGlowY0, rearGlowZ0, rearGlowX1, rearGlowY1, rearGlowZ1);
+            drawCuboid(gl, rearGlowX2, rearGlowY0, rearGlowZ0, rearGlowX3, rearGlowY1, rearGlowZ1);
 
             gl.glDepthMask(true);
             gl.glDisable(GL2.GL_BLEND);
-            gl.glEnable(GL2.GL_LIGHTING);
         }
+
+        gl.glColor3f(stopRed, stopGreenBlue, stopGreenBlue);
+        drawCuboid(gl, stopLeftX0, stopY0, stopZ0, stopLeftX1, stopY1, stopZ1);
+        drawCuboid(gl, stopRightX0, stopY0, stopZ0, stopRightX1, stopY1, stopZ1);
+
+        if (brake > 0.01f) {
+            gl.glEnable(GL2.GL_BLEND);
+            gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+            gl.glDepthMask(false);
+
+            float stopGlow = (imported ? 0.12f : 0.08f) + brake * (imported ? 0.30f : 0.22f);
+            gl.glColor4f(1.0f, 0.08f, 0.06f, stopGlow);
+            drawCuboid(gl, stopGlowLeftX0, stopGlowY0, stopGlowZ0, stopGlowLeftX1, stopGlowY1, stopGlowZ1);
+            drawCuboid(gl, stopGlowRightX0, stopGlowY0, stopGlowZ0, stopGlowRightX1, stopGlowY1, stopGlowZ1);
+
+            gl.glDepthMask(true);
+            gl.glDisable(GL2.GL_BLEND);
+        }
+
+        float indicatorLeftBase = 0.14f + leftIndicator * 0.86f;
+        float indicatorRightBase = 0.14f + rightIndicator * 0.86f;
+        float indicatorY0 = imported ? -0.52f : 0.08f;
+        float indicatorY1 = imported ? -0.34f : 0.20f;
+        float indicatorZ0 = imported ? -4.25f : -2.08f;
+        float indicatorZ1 = imported ? -4.10f : -1.94f;
+        float indicatorLeftX0 = imported ? -1.22f : -1.02f;
+        float indicatorLeftX1 = imported ? -1.12f : -0.94f;
+        float indicatorRightX0 = imported ? 1.12f : 0.94f;
+        float indicatorRightX1 = imported ? 1.22f : 1.02f;
+
+        gl.glColor3f(indicatorLeftBase, 0.32f * indicatorLeftBase, 0.02f);
+        drawCuboid(gl, indicatorLeftX0, indicatorY0, indicatorZ0, indicatorLeftX1, indicatorY1, indicatorZ1);
+        gl.glColor3f(indicatorRightBase, 0.32f * indicatorRightBase, 0.02f);
+        drawCuboid(gl, indicatorRightX0, indicatorY0, indicatorZ0, indicatorRightX1, indicatorY1, indicatorZ1);
+
+        if (leftIndicator > 0.01f || rightIndicator > 0.01f) {
+            gl.glEnable(GL2.GL_BLEND);
+            gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+            gl.glDepthMask(false);
+
+            if (leftIndicator > 0.01f) {
+                gl.glColor4f(1.0f, 0.42f, 0.05f, imported ? 0.26f : 0.18f);
+                drawCuboid(gl, indicatorLeftX0 - 0.03f, indicatorY0 - 0.04f, indicatorZ0 - 0.06f,
+                    indicatorLeftX1 + 0.03f, indicatorY1 + 0.05f, indicatorZ1 + 0.06f);
+            }
+            if (rightIndicator > 0.01f) {
+                gl.glColor4f(1.0f, 0.42f, 0.05f, imported ? 0.26f : 0.18f);
+                drawCuboid(gl, indicatorRightX0 - 0.03f, indicatorY0 - 0.04f, indicatorZ0 - 0.06f,
+                    indicatorRightX1 + 0.03f, indicatorY1 + 0.05f, indicatorZ1 + 0.06f);
+            }
+
+            gl.glDepthMask(true);
+            gl.glDisable(GL2.GL_BLEND);
+        }
+
+        float reverseLit = clamp(reverseLightIntensity, 0.0f, 1.0f);
+        float reverseMain = 0.45f + reverseLit * 0.55f;
+        float reverseTint = 0.46f + reverseLit * 0.52f;
+        gl.glColor3f(reverseMain, reverseMain, reverseTint);
+        drawCuboid(gl, reverseX0, reverseY0, reverseZ0, reverseX1, reverseY1, reverseZ1);
+        drawCuboid(gl, reverseX2, reverseY0, reverseZ0, reverseX3, reverseY1, reverseZ1);
+
+        if (reverseLit > 0.01f) {
+            gl.glEnable(GL2.GL_BLEND);
+            gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+            gl.glDepthMask(false);
+
+            float reverseGlow = (imported ? 0.14f : 0.09f) + reverseLit * (imported ? 0.36f : 0.26f);
+            gl.glColor4f(0.90f, 0.94f, 1.0f, reverseGlow);
+            drawCuboid(gl, reverseGlowX0, reverseGlowY0, reverseGlowZ0, reverseGlowX1, reverseGlowY1, reverseGlowZ1);
+            drawCuboid(gl, reverseGlowX2, reverseGlowY0, reverseGlowZ0, reverseGlowX3, reverseGlowY1, reverseGlowZ1);
+
+            gl.glDepthMask(true);
+            gl.glDisable(GL2.GL_BLEND);
+        }
+        gl.glEnable(GL2.GL_LIGHTING);
+    }
+
+    private void drawFrontLightMarkers(GL2 gl) {
+        float headIntensity = headlightsEnabled ? 1.0f : 0.0f;
+        if (headIntensity <= 0.0f) {
+            return;
+        }
+
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glColor3f(1.0f, 0.96f, 0.88f);
+        drawCuboid(gl, -0.98f, -0.18f, 3.86f, -0.56f, 0.08f, 4.12f);
+        drawCuboid(gl, 0.56f, -0.18f, 3.86f, 0.98f, 0.08f, 4.12f);
+
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glDepthMask(false);
+        gl.glColor4f(1.0f, 0.95f, 0.80f, 0.55f);
+        drawCuboid(gl, -1.10f, -0.30f, 3.80f, -0.44f, 0.22f, 4.35f);
+        drawCuboid(gl, 0.44f, -0.30f, 3.80f, 1.10f, 0.22f, 4.35f);
+        gl.glDepthMask(true);
+        gl.glDisable(GL2.GL_BLEND);
+        gl.glEnable(GL2.GL_LIGHTING);
     }
 
     private void drawCabin(GL2 gl) {
@@ -482,17 +707,20 @@ public class Truck {
 
         float brakeTarget = brakingForward ? 1.0f : 0.0f;
         brakeLightIntensity = approach(brakeLightIntensity, brakeTarget, 5.5f * UPDATE_DT);
+
+        float reverseTarget = speed < -0.15f ? 1.0f : 0.0f;
+        reverseLightIntensity = approach(reverseLightIntensity, reverseTarget, 4.6f * UPDATE_DT);
     }
 
     private void updateSuspension() {
         float speedAbs = Math.abs(speed);
         float roughness = clamp((Math.abs(pitch) + Math.abs(tilt)) / 20.0f, 0.0f, 1.0f);
-        float amplitude = 0.004f + speedAbs * 0.0012f + roughness * 0.009f;
-        amplitude = clamp(amplitude, 0.004f, 0.028f);
+        float amplitude = 0.0015f + speedAbs * 0.0004f + roughness * 0.0035f;
+        amplitude = clamp(amplitude, 0.0015f, 0.010f);
 
-        suspensionPhase += (3.4f + speedAbs * 0.55f + roughness * 8.0f) * UPDATE_DT;
+        suspensionPhase += (2.1f + speedAbs * 0.22f + roughness * 2.0f) * UPDATE_DT;
         float targetOffset = (float) Math.sin(suspensionPhase) * amplitude;
-        suspensionOffset = approach(suspensionOffset, targetOffset, 0.08f);
+        suspensionOffset = approach(suspensionOffset, targetOffset, 0.03f);
     }
 
     private void updateSteering() {
@@ -708,5 +936,52 @@ public class Truck {
 
     public float getPitch() {
         return pitch;
+    }
+
+    public void setHeadlightsEnabled(boolean enabled) {
+        this.headlightsEnabled = enabled;
+    }
+
+    public boolean areHeadlightsEnabled() {
+        return headlightsEnabled;
+    }
+
+    public boolean isUsingImportedModel() {
+        return importedModel.isLoaded();
+    }
+
+    public float[] localPointToWorld(float localX, float localY, float localZ) {
+        float rollRadians = (float) Math.toRadians(-tilt);
+        float pitchRadians = (float) Math.toRadians(pitch);
+        float yawRadians = (float) Math.toRadians(angle);
+
+        // Apply the same rotation order as in draw(): Z(roll), X(pitch), Y(yaw), then translation.
+        float x1 = (float) (localX * Math.cos(rollRadians) - localY * Math.sin(rollRadians));
+        float y1 = (float) (localX * Math.sin(rollRadians) + localY * Math.cos(rollRadians));
+        float z1 = localZ;
+
+        float x2 = x1;
+        float y2 = (float) (y1 * Math.cos(pitchRadians) - z1 * Math.sin(pitchRadians));
+        float z2 = (float) (y1 * Math.sin(pitchRadians) + z1 * Math.cos(pitchRadians));
+
+        float x3 = (float) (x2 * Math.cos(yawRadians) + z2 * Math.sin(yawRadians));
+        float y3 = y2;
+        float z3 = (float) (-x2 * Math.sin(yawRadians) + z2 * Math.cos(yawRadians));
+
+        return new float[] {
+                x + x3,
+                y + suspensionOffset + y3,
+                z + z3
+        };
+    }
+
+    public float[] localDirectionToWorld(float localX, float localY, float localZ) {
+        float[] origin = localPointToWorld(0.0f, 0.0f, 0.0f);
+        float[] point = localPointToWorld(localX, localY, localZ);
+        return new float[] {
+                point[0] - origin[0],
+                point[1] - origin[1],
+                point[2] - origin[2]
+        };
     }
 }
