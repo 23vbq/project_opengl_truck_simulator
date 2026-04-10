@@ -2,8 +2,8 @@ import java.util.Random;
 
 public class HeightMap {
 
-    private static final int DEFAULT_SIZE = 100;
-    private static final float DEFAULT_HEIGHT_SCALE = 22.0f;
+    private static final int DEFAULT_SIZE = 170;
+    private static final float DEFAULT_HEIGHT_SCALE = 16.0f;
 
     private final int size;
     private final float[][] grid;
@@ -23,9 +23,9 @@ public class HeightMap {
     public void generate(int seed) {
         PerlinNoise noise = new PerlinNoise(seed);
 
-        float frequency = 0.055f;
-        int octaves = 4;
-        float persistence = 0.52f;
+        float frequency = 0.020f;
+        int octaves = 5;
+        float persistence = 0.45f;
 
         float minHeight = Float.MAX_VALUE;
         float maxHeight = -Float.MAX_VALUE;
@@ -63,6 +63,8 @@ public class HeightMap {
                 grid[x][z] = normalized;
             }
         }
+
+        smoothGrid(3);
     }
 
     public float getHeight(int gridX, int gridZ) {
@@ -105,6 +107,36 @@ public class HeightMap {
 
     public float getHeightScale() {
         return heightScale;
+    }
+
+    private void smoothGrid(int passes) {
+        float[][] temp = new float[size][size];
+
+        for (int pass = 0; pass < passes; pass++) {
+            for (int x = 0; x < size; x++) {
+                for (int z = 0; z < size; z++) {
+                    float weightedSum = 0.0f;
+                    float totalWeight = 0.0f;
+
+                    for (int dx = -1; dx <= 1; dx++) {
+                        for (int dz = -1; dz <= 1; dz++) {
+                            int nx = Math.max(0, Math.min(size - 1, x + dx));
+                            int nz = Math.max(0, Math.min(size - 1, z + dz));
+
+                            float weight = (dx == 0 && dz == 0) ? 4.0f : ((dx == 0 || dz == 0) ? 2.0f : 1.0f);
+                            weightedSum += grid[nx][nz] * weight;
+                            totalWeight += weight;
+                        }
+                    }
+
+                    temp[x][z] = weightedSum / totalWeight;
+                }
+            }
+
+            for (int x = 0; x < size; x++) {
+                System.arraycopy(temp[x], 0, grid[x], 0, size);
+            }
+        }
     }
 
     private float lerp(float a, float b, float t) {

@@ -29,8 +29,8 @@ public class World {
                 float y01 = heightMap.getHeight(x, z + 1);
                 float y11 = heightMap.getHeight(x + 1, z + 1);
 
-                drawTriangle(gl, x, y00, z, x + 1, y10, z, x, y01, z + 1);
-                drawTriangle(gl, x + 1, y10, z, x + 1, y11, z + 1, x, y01, z + 1);
+                drawTriangle(gl, x, y00, z, x, y01, z + 1, x + 1, y10, z);
+                drawTriangle(gl, x + 1, y10, z, x, y01, z + 1, x + 1, y11, z + 1);
             }
         }
         gl.glEnd();

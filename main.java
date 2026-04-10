@@ -48,8 +48,7 @@ public class main extends JFrame implements GLEventListener {
         world = new World();
 
         gl.glEnable(GL2.GL_DEPTH_TEST);
-        gl.glEnable(GL2.GL_CULL_FACE);
-        gl.glCullFace(GL2.GL_BACK);
+        gl.glDisable(GL2.GL_CULL_FACE);
 
         gl.glEnable(GL2.GL_LIGHTING);
         gl.glEnable(GL2.GL_LIGHT0);
@@ -75,10 +74,14 @@ public class main extends JFrame implements GLEventListener {
         gl.glMatrixMode(GL2.GL_MODELVIEW);
         gl.glLoadIdentity();
 
-        float cameraX = 70.0f;
-        float cameraY = 42.0f;
-        float cameraZ = 95.0f;
-        glu.gluLookAt(cameraX, cameraY, cameraZ, 50.0f, 0.0f, 50.0f, 0.0f, 1.0f, 0.0f);
+        int terrainSize = world.getHeightMap().getSize();
+        float center = (terrainSize - 1) * 0.5f;
+        float centerHeight = world.getHeightMap().getHeight(center, center);
+
+        float cameraX = center + terrainSize * 0.35f;
+        float cameraY = centerHeight + terrainSize * 0.28f;
+        float cameraZ = center + terrainSize * 0.45f;
+        glu.gluLookAt(cameraX, cameraY, cameraZ, center, centerHeight, center, 0.0f, 1.0f, 0.0f);
 
         world.draw(gl);
 
