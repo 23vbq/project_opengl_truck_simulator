@@ -312,6 +312,34 @@ public class Road {
         gl.glEnd();
     }
 
+    public void drawWetOverlay(com.jogamp.opengl.GL2 gl, float wetness) {
+        if (sampleCount < 2) return;
+        float halfWidth = ROAD_WIDTH * 0.5f;
+        float alpha = wetness * 0.32f;
+
+        gl.glEnable(com.jogamp.opengl.GL2.GL_BLEND);
+        gl.glBlendFunc(com.jogamp.opengl.GL2.GL_SRC_ALPHA, com.jogamp.opengl.GL2.GL_ONE);
+        gl.glDisable(com.jogamp.opengl.GL2.GL_LIGHTING);
+        gl.glDepthMask(false);
+
+        gl.glBegin(com.jogamp.opengl.GL2.GL_QUAD_STRIP);
+        for (int i = 0; i < sampleCount; i++) {
+            float perpX = -sampleDirZ[i] * halfWidth;
+            float perpZ = sampleDirX[i] * halfWidth;
+            float y = sampleY[i] + 0.02f;
+            // shimmer: vary alpha slightly along road for puddle effect
+            float shimmer = 0.55f + 0.45f * (float) Math.sin(i * 0.38f + System.currentTimeMillis() * 0.0008f);
+            gl.glColor4f(0.35f, 0.50f, 0.75f, alpha * shimmer);
+            gl.glVertex3f(sampleX[i] - perpX, y, sampleZ[i] - perpZ);
+            gl.glVertex3f(sampleX[i] + perpX, y, sampleZ[i] + perpZ);
+        }
+        gl.glEnd();
+
+        gl.glDepthMask(true);
+        gl.glEnable(com.jogamp.opengl.GL2.GL_LIGHTING);
+        gl.glBlendFunc(com.jogamp.opengl.GL2.GL_SRC_ALPHA, com.jogamp.opengl.GL2.GL_ONE_MINUS_SRC_ALPHA);
+    }
+
     private float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }

@@ -16,6 +16,9 @@ public class World {
     private static final int RAIN_PARTICLE_COUNT = 680;
     private static final int WIND_STREAK_COUNT = 190;
     private static final int CLOUD_COUNT = 48;
+    private static final int SMOKE_COUNT = 80;
+    private static final int SPARK_COUNT = 150;
+    private static final int TRACK_MAX = 1000;
     private static final float CLOUD_ZONE_PADDING = 220.0f;
     private final float[] rainX;
     private final float[] rainY;
@@ -39,6 +42,29 @@ public class World {
     private long lastWindUpdateNanos;
     private long lastCloudUpdateNanos;
     private boolean rainEnabled;
+    private float wetness;
+
+    // Exhaust smoke
+    private final float[] smokeX, smokeY, smokeZ;
+    private final float[] smokeVX, smokeVY, smokeVZ;
+    private final float[] smokeAge, smokeMaxAge, smokeSize;
+    private int smokeHead;
+    private long lastSmokeNanos;
+
+    // Brake sparks
+    private final float[] sparkX, sparkY, sparkZ;
+    private final float[] sparkVX, sparkVY, sparkVZ;
+    private final float[] sparkAge, sparkMaxAge;
+    private int sparkHead;
+    private long lastSparkNanos;
+
+    // Wheel tracks
+    private final float[] trackX0, trackY0, trackZ0;
+    private final float[] trackX1, trackY1, trackZ1;
+    private final float[] trackTimestamp;
+    private int trackHead, trackCount;
+    private float lastTrackX, lastTrackZ;
+    private final Random smokeRandom;
 
     public World() {
         this.heightMap = new HeightMap();
@@ -46,6 +72,20 @@ public class World {
         this.trees = new ArrayList<Tree>();
         this.road = new Road(heightMap);
         this.inverseHeightScale = 1.0f / Math.max(0.0001f, heightMap.getHeightScale());
+        this.smokeX = new float[SMOKE_COUNT]; this.smokeY = new float[SMOKE_COUNT]; this.smokeZ = new float[SMOKE_COUNT];
+        this.smokeVX = new float[SMOKE_COUNT]; this.smokeVY = new float[SMOKE_COUNT]; this.smokeVZ = new float[SMOKE_COUNT];
+        this.smokeAge = new float[SMOKE_COUNT]; this.smokeMaxAge = new float[SMOKE_COUNT]; this.smokeSize = new float[SMOKE_COUNT];
+        this.sparkX = new float[SPARK_COUNT]; this.sparkY = new float[SPARK_COUNT]; this.sparkZ = new float[SPARK_COUNT];
+        this.sparkVX = new float[SPARK_COUNT]; this.sparkVY = new float[SPARK_COUNT]; this.sparkVZ = new float[SPARK_COUNT];
+        this.sparkAge = new float[SPARK_COUNT]; this.sparkMaxAge = new float[SPARK_COUNT];
+        this.trackX0 = new float[TRACK_MAX]; this.trackY0 = new float[TRACK_MAX]; this.trackZ0 = new float[TRACK_MAX];
+        this.trackX1 = new float[TRACK_MAX]; this.trackY1 = new float[TRACK_MAX]; this.trackZ1 = new float[TRACK_MAX];
+        this.trackTimestamp = new float[TRACK_MAX];
+        this.smokeRandom = new Random(9999);
+        for (int i = 0; i < SMOKE_COUNT; i++) smokeMaxAge[i] = -1; // mark dead
+        for (int i = 0; i < SPARK_COUNT; i++) sparkMaxAge[i] = -1; // mark dead
+        this.lastSmokeNanos = System.nanoTime();
+        this.lastSparkNanos = System.nanoTime();
         this.rainX = new float[RAIN_PARTICLE_COUNT];
         this.rainY = new float[RAIN_PARTICLE_COUNT];
         this.rainZ = new float[RAIN_PARTICLE_COUNT];
@@ -88,6 +128,12 @@ public class World {
 
     public void update() {
         truck.update(heightMap, trees, road);
+        updateSmoke();
+        updateSparks();
+        updateTracks();
+        // wetness ramps up when rain enabled
+        float wetTarget = rainEnabled ? 1.0f : 0.0f;
+        wetness += (wetTarget - wetness) * 0.005f;
     }
 
     public void setControls(boolean forward, boolean backward, boolean left, boolean right) {
@@ -110,12 +156,16 @@ public class World {
         long time = System.currentTimeMillis();
         drawSkyGradient(gl);
         drawTerrain(gl);
+        drawTracks(gl, time);
         road.draw(gl, heightMap, time);
+        if (wetness > 0.01f) road.drawWetOverlay(gl, wetness);
         drawTrees(gl);
         drawClouds(gl);
         drawWindStreaks(gl);
         drawRain(gl);
         truck.draw(gl);
+        drawSmoke(gl);
+        drawSparks(gl);
     }
 
     private void drawSkyGradient(GL2 gl) {
@@ -559,6 +609,29 @@ public class World {
         gl.glColor4f(sunR * intensity * 0.15f, sunG * intensity * 0.08f, 0.04f * intensity, 0.12f);
         drawSphere(gl, 34.0f, 10, 6);
 
+        // God rays: radial spikes from sun center, additive blend
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE);
+        int numRays = 12;
+        float rayLen = 90.0f + (float) Math.sin(time * 0.0004f) * 18.0f;
+        float rayWidth = 3.2f;
+        float slowRot = (float) (time * 0.000015);
+        for (int ri = 0; ri < numRays; ri++) {
+            double angle = ri * Math.PI * 2.0 / numRays + slowRot;
+            float rx = (float) Math.cos(angle) * rayLen;
+            float ry = (float) Math.sin(angle) * rayLen;
+            float px = (float) -Math.sin(angle) * rayWidth * 0.5f;
+            float py = (float) Math.cos(angle) * rayWidth * 0.5f;
+            float rayAlpha = intensity * (0.07f + (float) Math.sin(time * 0.0007f + ri * 0.8f) * 0.025f);
+            gl.glBegin(GL2.GL_QUADS);
+            gl.glColor4f(1.0f, 0.85f, 0.4f, rayAlpha);
+            gl.glVertex3f(-px, -py, 0);
+            gl.glVertex3f(px, py, 0);
+            gl.glColor4f(1.0f, 0.65f, 0.2f, 0.0f);
+            gl.glVertex3f(rx + px, ry + py, 0);
+            gl.glVertex3f(rx - px, ry - py, 0);
+            gl.glEnd();
+        }
+
         gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
         gl.glPopMatrix();
         gl.glEnable(GL2.GL_LIGHTING);
@@ -760,5 +833,258 @@ public class World {
         }
 
         return new float[] { nx / length, ny / length, nz / length };
+    }
+
+    // -------------------------------------------------------------------------
+    // EXHAUST SMOKE
+    // -------------------------------------------------------------------------
+
+    private void updateSmoke() {
+        long now = System.nanoTime();
+        float dt = (now - lastSmokeNanos) / 1_000_000_000.0f;
+        lastSmokeNanos = now;
+        dt = Math.min(dt, 0.1f);
+
+        // update existing particles
+        for (int i = 0; i < SMOKE_COUNT; i++) {
+            if (smokeMaxAge[i] < 0) continue;
+            smokeAge[i] += dt;
+            if (smokeAge[i] >= smokeMaxAge[i]) { smokeMaxAge[i] = -1; continue; }
+            smokeX[i] += smokeVX[i] * dt;
+            smokeY[i] += smokeVY[i] * dt;
+            smokeZ[i] += smokeVZ[i] * dt;
+            // slow down and drift
+            smokeVX[i] *= 0.97f;
+            smokeVZ[i] *= 0.97f;
+        }
+
+        // emit: only when engine running and not neutral
+        float rpm = truck.getEstimatedRpm();
+        int gear = truck.getCurrentGear();
+        if (rpm < 700 || gear == 0) return;
+
+        // emit 1-2 particles per ~80ms
+        if (smokeRandom.nextFloat() > dt * 14.0f) return;
+
+        // exhaust pipe world position (top of cabin, left side)
+        float[] pipe = truck.localPointToWorld(-0.55f, 1.72f, -1.60f);
+
+        smokeX[smokeHead] = pipe[0];
+        smokeY[smokeHead] = pipe[1];
+        smokeZ[smokeHead] = pipe[2];
+
+        float speedFactor = Math.abs(truck.getSpeed()) * 0.08f;
+        float rpmFactor = (rpm - 650f) / 1950f;
+        smokeVX[smokeHead] = (smokeRandom.nextFloat() - 0.5f) * 0.4f;
+        smokeVY[smokeHead] = 0.8f + smokeRandom.nextFloat() * 0.6f + rpmFactor * 0.8f;
+        smokeVZ[smokeHead] = (smokeRandom.nextFloat() - 0.5f) * 0.4f - speedFactor;
+        smokeAge[smokeHead] = 0;
+        smokeMaxAge[smokeHead] = 1.8f + smokeRandom.nextFloat() * 1.2f;
+        smokeSize[smokeHead] = 0.18f + smokeRandom.nextFloat() * 0.12f;
+        smokeHead = (smokeHead + 1) % SMOKE_COUNT;
+    }
+
+    private void drawSmoke(GL2 gl) {
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glDisable(GL2.GL_FOG);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glDepthMask(false);
+
+        // get camera-right and camera-up for billboarding (approximate: axis-aligned)
+        for (int i = 0; i < SMOKE_COUNT; i++) {
+            if (smokeMaxAge[i] < 0) continue;
+            float t = smokeAge[i] / smokeMaxAge[i];
+            float alpha = (1.0f - t) * (t < 0.15f ? t / 0.15f : 1.0f) * 0.38f;
+            float size = smokeSize[i] * (1.0f + t * 5.0f);
+            float gray = 0.40f + t * 0.45f;
+
+            gl.glColor4f(gray, gray, gray, alpha);
+            gl.glBegin(GL2.GL_QUADS);
+            gl.glVertex3f(smokeX[i] - size, smokeY[i] - size, smokeZ[i]);
+            gl.glVertex3f(smokeX[i] + size, smokeY[i] - size, smokeZ[i]);
+            gl.glVertex3f(smokeX[i] + size, smokeY[i] + size, smokeZ[i]);
+            gl.glVertex3f(smokeX[i] - size, smokeY[i] + size, smokeZ[i]);
+            gl.glEnd();
+        }
+
+        gl.glDepthMask(true);
+        gl.glEnable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_FOG);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+    }
+
+    // -------------------------------------------------------------------------
+    // BRAKE SPARKS
+    // -------------------------------------------------------------------------
+
+    private void updateSparks() {
+        long now = System.nanoTime();
+        float dt = (now - lastSparkNanos) / 1_000_000_000.0f;
+        lastSparkNanos = now;
+        dt = Math.min(dt, 0.1f);
+
+        for (int i = 0; i < SPARK_COUNT; i++) {
+            if (sparkMaxAge[i] < 0) continue;
+            sparkAge[i] += dt;
+            if (sparkAge[i] >= sparkMaxAge[i]) { sparkMaxAge[i] = -1; continue; }
+            sparkX[i] += sparkVX[i] * dt;
+            sparkY[i] += sparkVY[i] * dt;
+            sparkZ[i] += sparkVZ[i] * dt;
+            sparkVY[i] -= 9.8f * dt; // gravity
+        }
+
+        boolean heavyBraking = truck.isBackwardPressed()
+            && Math.abs(truck.getSpeedKmh()) > 15.0f
+            && truck.getBrakeLightIntensity() > 0.5f;
+        if (!heavyBraking) return;
+
+        // emit 4 sparks per frame
+        float heading = (float) Math.toRadians(truck.getAngle());
+        float hx = (float) Math.sin(heading);
+        float hz = (float) Math.cos(heading);
+
+        for (int e = 0; e < 4; e++) {
+            // random rear wheel position
+            float side = smokeRandom.nextBoolean() ? -1.05f : 1.05f;
+            float wz = smokeRandom.nextBoolean() ? -0.35f : -1.45f;
+            float[] wp = truck.localPointToWorld(side, 0.46f, wz);
+
+            sparkX[sparkHead] = wp[0];
+            sparkY[sparkHead] = wp[1];
+            sparkZ[sparkHead] = wp[2];
+            // fly mostly backward from travel direction + random spread
+            float speed = 3.0f + smokeRandom.nextFloat() * 5.0f;
+            sparkVX[sparkHead] = -hx * speed * 0.6f + (smokeRandom.nextFloat() - 0.5f) * 4.0f;
+            sparkVY[sparkHead] = 1.5f + smokeRandom.nextFloat() * 3.0f;
+            sparkVZ[sparkHead] = -hz * speed * 0.6f + (smokeRandom.nextFloat() - 0.5f) * 4.0f;
+            sparkAge[sparkHead] = 0;
+            sparkMaxAge[sparkHead] = 0.2f + smokeRandom.nextFloat() * 0.25f;
+            sparkHead = (sparkHead + 1) % SPARK_COUNT;
+        }
+    }
+
+    private void drawSparks(GL2 gl) {
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glDisable(GL2.GL_FOG);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE);
+        gl.glDepthMask(false);
+        gl.glLineWidth(1.8f);
+
+        gl.glBegin(GL2.GL_LINES);
+        for (int i = 0; i < SPARK_COUNT; i++) {
+            if (sparkMaxAge[i] < 0) continue;
+            float t = sparkAge[i] / sparkMaxAge[i];
+            float alpha = (1.0f - t) * 0.95f;
+            float r = 1.0f;
+            float g = Math.max(0.0f, 0.75f - t * 0.6f);
+            float b = Math.max(0.0f, 0.2f - t * 0.2f);
+            gl.glColor4f(r, g, b, alpha);
+            gl.glVertex3f(sparkX[i], sparkY[i], sparkZ[i]);
+            // tail
+            float tailLen = 0.06f;
+            gl.glColor4f(r, g * 0.5f, 0.0f, alpha * 0.3f);
+            gl.glVertex3f(sparkX[i] - sparkVX[i] * tailLen,
+                          sparkY[i] - sparkVY[i] * tailLen,
+                          sparkZ[i] - sparkVZ[i] * tailLen);
+        }
+        gl.glEnd();
+
+        gl.glLineWidth(1.0f);
+        gl.glDepthMask(true);
+        gl.glEnable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_FOG);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+    }
+
+    // -------------------------------------------------------------------------
+    // WHEEL TRACKS
+    // -------------------------------------------------------------------------
+
+    private void updateTracks() {
+        float dx = truck.getX() - lastTrackX;
+        float dz = truck.getZ() - lastTrackZ;
+        float dist = (float) Math.sqrt(dx * dx + dz * dz);
+        if (dist < 0.35f || Math.abs(truck.getSpeed()) < 0.2f) return;
+
+        float heading = (float) Math.toRadians(truck.getAngle());
+        float rx = (float) Math.cos(heading); // right vector
+        float rz = -(float) Math.sin(heading);
+
+        // two tracks: left and right rear wheels, two axles
+        for (int axle = 0; axle < 2; axle++) {
+            float localZ = axle == 0 ? -0.35f : -1.45f;
+            float[] left  = truck.localPointToWorld(-1.05f, 0.04f, localZ);
+            float[] right = truck.localPointToWorld( 1.05f, 0.04f, localZ);
+
+            // store as a quad: left-right pair = one segment (two points)
+            int idx = trackHead;
+            trackX0[idx] = left[0];  trackY0[idx] = left[1];  trackZ0[idx] = left[2];
+            trackX1[idx] = right[0]; trackY1[idx] = right[1]; trackZ1[idx] = right[2];
+            trackTimestamp[idx] = System.nanoTime() / 1_000_000_000.0f;
+            trackHead = (trackHead + 1) % TRACK_MAX;
+            if (trackCount < TRACK_MAX) trackCount++;
+        }
+
+        lastTrackX = truck.getX();
+        lastTrackZ = truck.getZ();
+    }
+
+    private void drawTracks(GL2 gl, long timeMs) {
+        if (trackCount < 2) return;
+        float now = timeMs / 1000.0f;
+        float fadeTime = 22.0f;
+
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glDepthMask(false);
+        gl.glEnable(GL2.GL_POLYGON_OFFSET_FILL);
+        gl.glPolygonOffset(-1.0f, -1.0f);
+
+        gl.glBegin(GL2.GL_QUADS);
+        int count = Math.min(trackCount, TRACK_MAX);
+        for (int i = 0; i < count - 1; i++) {
+            int a = (trackHead - count + i + TRACK_MAX) % TRACK_MAX;
+            int b = (trackHead - count + i + 1 + TRACK_MAX) % TRACK_MAX;
+
+            float ageA = now - trackTimestamp[a];
+            float ageB = now - trackTimestamp[b];
+            if (ageA > fadeTime || ageB > fadeTime) continue;
+
+            // skip if gap too large (truck teleported / ring buffer wrap)
+            float segDx = trackX0[b] - trackX0[a];
+            float segDz = trackZ0[b] - trackZ0[a];
+            if (segDx * segDx + segDz * segDz > 4.0f) continue;
+
+            float alphaA = (1.0f - ageA / fadeTime) * 0.55f;
+            float alphaB = (1.0f - ageB / fadeTime) * 0.55f;
+
+            gl.glColor4f(0.06f, 0.05f, 0.04f, alphaA);
+            gl.glVertex3f(trackX0[a], trackY0[a] + 0.03f, trackZ0[a]);
+            gl.glColor4f(0.06f, 0.05f, 0.04f, alphaA);
+            gl.glVertex3f(trackX1[a], trackY1[a] + 0.03f, trackZ1[a]);
+            gl.glColor4f(0.06f, 0.05f, 0.04f, alphaB);
+            gl.glVertex3f(trackX1[b], trackY1[b] + 0.03f, trackZ1[b]);
+            gl.glColor4f(0.06f, 0.05f, 0.04f, alphaB);
+            gl.glVertex3f(trackX0[b], trackY0[b] + 0.03f, trackZ0[b]);
+        }
+        gl.glEnd();
+
+        gl.glDisable(GL2.GL_POLYGON_OFFSET_FILL);
+        gl.glDepthMask(true);
+        gl.glEnable(GL2.GL_LIGHTING);
+    }
+
+    public float[] getSunWorldPosition() {
+        float sunAzimuth = (float) Math.PI + skyPhase * (float) (Math.PI * 2.0);
+        float sunElevation = (float) (Math.sin(skyPhase * Math.PI) * Math.PI * 0.45);
+        float sunDist = 280.0f;
+        float sunX = (float) (Math.cos(sunAzimuth) * Math.cos(sunElevation)) * sunDist + truck.getX();
+        float sunY = (float) Math.sin(sunElevation) * sunDist + 6.0f;
+        float sunZ = (float) (Math.sin(sunAzimuth) * Math.cos(sunElevation)) * sunDist + truck.getZ();
+        float sunIntensity = Math.max(0.0f, (float) Math.sin(skyPhase * Math.PI));
+        return new float[] { sunX, sunY, sunZ, sunIntensity };
     }
 }

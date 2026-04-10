@@ -278,7 +278,16 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         world.draw(gl);
         world.drawCelestialBodies(gl, currentCelestialPhase);
 
+        // capture modelview/projection BEFORE switching to ortho, for lens flare gluProject
+        double[] mvMatrix = new double[16];
+        double[] projMatrix = new double[16];
+        int[] viewport = new int[4];
+        gl.glGetDoublev(GL2.GL_MODELVIEW_MATRIX, mvMatrix, 0);
+        gl.glGetDoublev(GL2.GL_PROJECTION_MATRIX, projMatrix, 0);
+        gl.glGetIntegerv(GL2.GL_VIEWPORT, viewport, 0);
+
         drawControlsUI(drawable, truck);
+        drawLensFlare(drawable, mvMatrix, projMatrix, viewport);
         gl.glFlush();
     }
 
@@ -314,6 +323,9 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
         gl.glDisable(GL2.GL_DEPTH_TEST);
         gl.glEnable(GL2.GL_BLEND);
         gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+
+        drawScreenVignette(width, height);
+        drawSpeedEffect(width, height, truck.getSpeedKmh());
 
         float controlPanelX = 12.0f;
         float controlPanelY = (float) height - 240.0f - 12.0f;
@@ -473,6 +485,140 @@ public class main extends JFrame implements GLEventListener, KeyListener, MouseL
             largeTextRenderer.draw("STALL", (int) drivePanelX + 246, (int) drivePanelY + 18);
         }
         largeTextRenderer.endRendering();
+    }
+
+    private void drawScreenVignette(int width, int height) {
+        float baseAlpha = 0.22f + currentNightFactor * 0.35f;
+        float vw = Math.min(width, height) * 0.42f;
+        float vh = Math.min(width, height) * 0.42f;
+
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glBegin(GL2.GL_QUADS);
+        // left
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(0, 0);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(vw, 0);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(vw, height);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(0, height);
+        // right
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(width - vw, 0);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(width, 0);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(width, height);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(width - vw, height);
+        // bottom
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(0, 0);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(width, 0);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(width, vh);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(0, vh);
+        // top
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(0, height - vh);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);       gl.glVertex2f(width, height - vh);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(width, height);
+        gl.glColor4f(0.0f, 0.0f, 0.0f, baseAlpha); gl.glVertex2f(0, height);
+        gl.glEnd();
+    }
+
+    private void drawSpeedEffect(int width, int height, float speedKmh) {
+        float speedRatio = clamp01(speedKmh / 110.0f);
+        if (speedRatio < 0.45f) return;
+        float t = (speedRatio - 0.45f) / 0.55f;
+        float alpha = t * t * 0.50f;
+
+        float cx = width * 0.5f;
+        float cy = height * 0.5f;
+        float radius = (float) Math.sqrt(width * width + height * height);
+        int numRays = 20;
+
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glBegin(GL2.GL_TRIANGLES);
+        for (int i = 0; i < numRays; i++) {
+            double a0 = i * Math.PI * 2.0 / numRays;
+            double a1 = (i + 0.45) * Math.PI * 2.0 / numRays;
+            double a2 = (i + 0.55) * Math.PI * 2.0 / numRays;
+            // center (transparent)
+            gl.glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
+            gl.glVertex2f(cx, cy);
+            // outer edge (dark)
+            gl.glColor4f(0.0f, 0.0f, 0.0f, alpha);
+            gl.glVertex2f(cx + (float) Math.cos(a1) * radius, cy + (float) Math.sin(a1) * radius);
+            gl.glVertex2f(cx + (float) Math.cos(a2) * radius, cy + (float) Math.sin(a2) * radius);
+        }
+        gl.glEnd();
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+    }
+
+    private void drawLensFlare(GLAutoDrawable drawable, double[] mvMatrix, double[] projMatrix, int[] viewport) {
+        float[] sunPos = world.getSunWorldPosition();
+        float sunIntensity = sunPos[3];
+        if (sunIntensity < 0.08f) return;
+
+        // project sun 3D position to screen space
+        double[] winXYZ = new double[3];
+        glu.gluProject(sunPos[0], sunPos[1], sunPos[2],
+                       mvMatrix, 0, projMatrix, 0, viewport, 0, winXYZ, 0);
+
+        // winXYZ[2] is depth; if outside [0,1] sun is clipped
+        if (winXYZ[2] < 0.0 || winXYZ[2] > 1.0) return;
+
+        int width  = drawable.getSurfaceWidth();
+        int height = drawable.getSurfaceHeight();
+
+        float sx = (float) winXYZ[0];
+        float sy = (float) winXYZ[1];
+
+        // check sun is on screen
+        if (sx < -200 || sx > width + 200 || sy < -200 || sy > height + 200) return;
+
+        float cx = width * 0.5f;
+        float cy = height * 0.5f;
+        float axisX = cx - sx;
+        float axisY = cy - sy;
+
+        gl.glMatrixMode(GL2.GL_PROJECTION);
+        gl.glPushMatrix();
+        gl.glLoadIdentity();
+        gl.glOrtho(0, width, 0, height, -1, 1);
+        gl.glMatrixMode(GL2.GL_MODELVIEW);
+        gl.glPushMatrix();
+        gl.glLoadIdentity();
+
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glDisable(GL2.GL_DEPTH_TEST);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE);
+
+        // flare elements: offset along sun→center axis, size, rgba
+        float[][] flares = {
+            // offset,  size,   r,    g,    b,    a
+            {  0.00f,  90f, 1.00f, 0.95f, 0.70f, 0.55f },  // main glow at sun
+            {  0.20f,  28f, 0.80f, 0.60f, 1.00f, 0.35f },  // small blue
+            {  0.40f,  55f, 1.00f, 0.80f, 0.40f, 0.22f },  // mid orange
+            {  0.60f,  18f, 0.60f, 0.80f, 1.00f, 0.30f },  // small cyan
+            {  0.80f,  42f, 1.00f, 0.50f, 0.20f, 0.18f },  // orange ring
+            {  1.00f,  14f, 0.70f, 0.60f, 1.00f, 0.28f },  // small violet at center
+            {  1.20f,  35f, 0.90f, 0.90f, 1.00f, 0.15f },  // far white
+            {  1.50f,  22f, 1.00f, 0.70f, 0.30f, 0.20f },  // far orange
+        };
+
+        for (float[] f : flares) {
+            float px = sx + axisX * f[0];
+            float py = sy + axisY * f[0];
+            float s  = f[1] * sunIntensity;
+            gl.glColor4f(f[2], f[3], f[4], f[5] * sunIntensity);
+            gl.glBegin(GL2.GL_QUADS);
+            gl.glVertex2f(px - s, py - s);
+            gl.glVertex2f(px + s, py - s);
+            gl.glVertex2f(px + s, py + s);
+            gl.glVertex2f(px - s, py + s);
+            gl.glEnd();
+        }
+
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glEnable(GL2.GL_DEPTH_TEST);
+        gl.glEnable(GL2.GL_LIGHTING);
+        gl.glMatrixMode(GL2.GL_PROJECTION);
+        gl.glPopMatrix();
+        gl.glMatrixMode(GL2.GL_MODELVIEW);
+        gl.glPopMatrix();
     }
 
     @Override
