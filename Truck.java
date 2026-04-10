@@ -48,7 +48,7 @@ public class Truck {
     public Truck() {
         this.x = 50.0f;
         this.z = 50.0f;
-        this.importedModel = new GltfModel("scene.gltf");
+        this.importedModel = new GltfModel("models/scene.gltf");
     }
 
     public void setPosition(float worldX, float worldZ) {
