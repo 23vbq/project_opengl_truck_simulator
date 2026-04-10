@@ -1,3 +1,5 @@
+import java.util.List;
+
 import com.jogamp.opengl.GL2;
 
 public class Truck {
@@ -27,6 +29,8 @@ public class Truck {
     private static final float WHEEL_CENTER_Y = -0.56f;
     private static final float WHEEL_HALF_WIDTH = 0.17f;
     private static final float GROUND_CLEARANCE = 0.015f;
+    private static final float TRUCK_COLLISION_RADIUS = 1.05f;
+    private static final float TREE_TRUNK_COLLISION_FACTOR = 0.30f;
 
     private static final float[][] WHEEL_OFFSETS = {
             { -1.05f, 1.25f },
@@ -54,10 +58,10 @@ public class Truck {
         this.rightPressed = right;
     }
 
-    public void update(HeightMap heightMap) {
+    public void update(HeightMap heightMap, List<Tree> trees) {
         updateSpeed();
         updateSteering();
-        updatePosition(heightMap);
+        updatePosition(heightMap, trees);
         updateBodyAlignment(heightMap);
         updateWheelAnimation();
     }
@@ -258,18 +262,55 @@ public class Truck {
         }
     }
 
-    private void updatePosition(HeightMap heightMap) {
+    private void updatePosition(HeightMap heightMap, List<Tree> trees) {
         float headingRadians = (float) Math.toRadians(angle);
         float dirX = (float) Math.sin(headingRadians);
         float dirZ = (float) Math.cos(headingRadians);
 
-        x += dirX * speed * UPDATE_DT;
-        z += dirZ * speed * UPDATE_DT;
+        float nextX = x + dirX * speed * UPDATE_DT;
+        float nextZ = z + dirZ * speed * UPDATE_DT;
 
         float minBound = 2.0f;
         float maxBound = heightMap.getSize() - 3.0f;
-        x = clamp(x, minBound, maxBound);
-        z = clamp(z, minBound, maxBound);
+        nextX = clamp(nextX, minBound, maxBound);
+        nextZ = clamp(nextZ, minBound, maxBound);
+
+        if (!collidesWithTrees(nextX, nextZ, trees)) {
+            x = nextX;
+            z = nextZ;
+            return;
+        }
+
+        boolean moved = false;
+        if (!collidesWithTrees(nextX, z, trees)) {
+            x = nextX;
+            moved = true;
+        }
+
+        if (!collidesWithTrees(x, nextZ, trees)) {
+            z = nextZ;
+            moved = true;
+        }
+
+        if (!moved) {
+            speed *= 0.22f;
+        }
+    }
+
+    private boolean collidesWithTrees(float candidateX, float candidateZ, List<Tree> trees) {
+        for (int i = 0; i < trees.size(); i++) {
+            Tree tree = trees.get(i);
+            float dx = candidateX - tree.getX();
+            float dz = candidateZ - tree.getZ();
+
+            float treeRadius = tree.getRadius() * TREE_TRUNK_COLLISION_FACTOR;
+            float collisionRadius = TRUCK_COLLISION_RADIUS + treeRadius;
+            if (dx * dx + dz * dz < collisionRadius * collisionRadius) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void updateBodyAlignment(HeightMap heightMap) {
@@ -282,13 +323,15 @@ public class Truck {
         float sampleDistance = 1.6f;
 
         float hCenter = heightMap.getHeight(x, z);
-        float hFront = heightMap.getHeight(x + forwardX * sampleDistance, z + forwardZ * sampleDistance);
-        float hBack = heightMap.getHeight(x - forwardX * sampleDistance, z - forwardZ * sampleDistance);
-        float hRight = heightMap.getHeight(x + rightX * sampleDistance, z + rightZ * sampleDistance);
-        float hLeft = heightMap.getHeight(x - rightX * sampleDistance, z - rightZ * sampleDistance);
+        float[] terrainNormal = computeTerrainNormal(heightMap, sampleDistance);
+        float[] normalInTruckFrame = rotateY(terrainNormal, -headingRadians);
 
-        float targetPitch = (float) -Math.toDegrees(Math.atan2(hFront - hBack, sampleDistance * 2.0f));
-        float targetTilt = (float) Math.toDegrees(Math.atan2(hRight - hLeft, sampleDistance * 2.0f));
+        float localX = clamp(normalInTruckFrame[0], -1.0f, 1.0f);
+        float localY = clamp(normalInTruckFrame[1], -1.0f, 1.0f);
+        float localZ = clamp(normalInTruckFrame[2], -1.0f, 1.0f);
+
+        float targetTilt = (float) Math.toDegrees(Math.asin(localX));
+        float targetPitch = (float) Math.toDegrees(Math.atan2(localZ, localY));
 
         pitch = approach(pitch, clamp(targetPitch, -13.0f, 13.0f), 18.0f * UPDATE_DT);
         tilt = approach(tilt, clamp(targetTilt, -12.0f, 12.0f), 16.0f * UPDATE_DT);
@@ -302,6 +345,35 @@ public class Truck {
         } else {
             y = approach(y, targetY, 20.0f * UPDATE_DT);
         }
+    }
+
+    private float[] computeTerrainNormal(HeightMap heightMap, float sampleDistance) {
+        float hL = heightMap.getHeight(x - sampleDistance, z);
+        float hR = heightMap.getHeight(x + sampleDistance, z);
+        float hD = heightMap.getHeight(x, z - sampleDistance);
+        float hU = heightMap.getHeight(x, z + sampleDistance);
+
+        float dYdX = (hR - hL) / (sampleDistance * 2.0f);
+        float dYdZ = (hU - hD) / (sampleDistance * 2.0f);
+
+        float nx = -dYdX;
+        float ny = 1.0f;
+        float nz = -dYdZ;
+
+        float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (length < 0.0001f) {
+            return new float[] { 0.0f, 1.0f, 0.0f };
+        }
+
+        return new float[] { nx / length, ny / length, nz / length };
+    }
+
+    private float[] rotateY(float[] vector, float radians) {
+        float cos = (float) Math.cos(radians);
+        float sin = (float) Math.sin(radians);
+        float xRot = vector[0] * cos + vector[2] * sin;
+        float zRot = -vector[0] * sin + vector[2] * cos;
+        return new float[] { xRot, vector[1], zRot };
     }
 
     private float computeSupportBaseHeight(HeightMap heightMap, float forwardX, float forwardZ, float rightX, float rightZ) {

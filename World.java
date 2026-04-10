@@ -1,18 +1,25 @@
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
 import com.jogamp.opengl.GL2;
 
 public class World {
 
     private final HeightMap heightMap;
     private final Truck truck;
+    private final List<Tree> trees;
     private final float inverseHeightScale;
 
     public World() {
         this.heightMap = new HeightMap();
         this.truck = new Truck();
+        this.trees = new ArrayList<Tree>();
         this.inverseHeightScale = 1.0f / Math.max(0.0001f, heightMap.getHeightScale());
 
         float center = (heightMap.getSize() - 1) * 0.5f;
         truck.setPosition(center, center);
+        generateTrees(center, center);
     }
 
     public HeightMap getHeightMap() {
@@ -24,7 +31,7 @@ public class World {
     }
 
     public void update() {
-        truck.update(heightMap);
+        truck.update(heightMap, trees);
     }
 
     public void setControls(boolean forward, boolean backward, boolean left, boolean right) {
@@ -33,7 +40,65 @@ public class World {
 
     public void draw(GL2 gl) {
         drawTerrain(gl);
+        drawTrees(gl);
         truck.draw(gl);
+    }
+
+    private void drawTrees(GL2 gl) {
+        for (int i = 0; i < trees.size(); i++) {
+            trees.get(i).draw(gl);
+        }
+    }
+
+    private void generateTrees(float truckSpawnX, float truckSpawnZ) {
+        Random random = new Random(314159);
+        int targetCount = 280;
+        int attempts = 0;
+        int maxAttempts = 9000;
+        int size = heightMap.getSize();
+
+        while (trees.size() < targetCount && attempts < maxAttempts) {
+            attempts++;
+            float x = 2.0f + random.nextFloat() * (size - 4.0f);
+            float z = 2.0f + random.nextFloat() * (size - 4.0f);
+
+            float dx = x - truckSpawnX;
+            float dz = z - truckSpawnZ;
+            if (dx * dx + dz * dz < 26.0f * 26.0f) {
+                continue;
+            }
+
+            float normalized = heightMap.getHeight((int) x, (int) z) * inverseHeightScale;
+            if (normalized < 0.20f || normalized > 0.78f) {
+                continue;
+            }
+
+            if (isTooSteep(x, z)) {
+                continue;
+            }
+
+            float y = heightMap.getHeight(x, z);
+            float height = 2.6f + random.nextFloat() * 2.3f;
+            float radius = 0.75f + random.nextFloat() * 0.55f;
+            float greenTint = -0.08f + random.nextFloat() * 0.16f;
+            float rotationY = random.nextFloat() * 360.0f;
+
+            trees.add(new Tree(x, y, z, height, radius, greenTint, rotationY));
+        }
+    }
+
+    private boolean isTooSteep(float x, float z) {
+        float step = 1.1f;
+        float hCenter = heightMap.getHeight(x, z);
+        float h1 = heightMap.getHeight(x + step, z);
+        float h2 = heightMap.getHeight(x - step, z);
+        float h3 = heightMap.getHeight(x, z + step);
+        float h4 = heightMap.getHeight(x, z - step);
+
+        float maxDelta = Math.max(Math.max(Math.abs(hCenter - h1), Math.abs(hCenter - h2)),
+                Math.max(Math.abs(hCenter - h3), Math.abs(hCenter - h4)));
+
+        return maxDelta > 1.7f;
     }
 
     private void drawTerrain(GL2 gl) {
