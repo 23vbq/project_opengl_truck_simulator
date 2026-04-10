@@ -1,6 +1,8 @@
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Toolkit;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 
 import javax.swing.JFrame;
 
@@ -13,13 +15,19 @@ import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
 
-public class main extends JFrame implements GLEventListener {
+public class main extends JFrame implements GLEventListener, KeyListener {
 
     private static final long serialVersionUID = 1L;
 
     private GL2 gl;
     private GLU glu;
     private World world;
+    private GLCanvas canvas;
+
+    private boolean forwardPressed;
+    private boolean backwardPressed;
+    private boolean leftPressed;
+    private boolean rightPressed;
 
     public main(String title) {
         super(title);
@@ -31,11 +39,14 @@ public class main extends JFrame implements GLEventListener {
 
         GLProfile profile = GLProfile.get(GLProfile.GL2);
         GLCapabilities capabilities = new GLCapabilities(profile);
-        GLCanvas canvas = new GLCanvas(capabilities);
+        canvas = new GLCanvas(capabilities);
         canvas.addGLEventListener(this);
+        canvas.addKeyListener(this);
+        canvas.setFocusable(true);
 
         add(canvas);
         setVisible(true);
+        canvas.requestFocusInWindow();
 
         FPSAnimator animator = new FPSAnimator(canvas, 60, true);
         animator.start();
@@ -74,14 +85,25 @@ public class main extends JFrame implements GLEventListener {
         gl.glMatrixMode(GL2.GL_MODELVIEW);
         gl.glLoadIdentity();
 
-        int terrainSize = world.getHeightMap().getSize();
-        float center = (terrainSize - 1) * 0.5f;
-        float centerHeight = world.getHeightMap().getHeight(center, center);
+        world.setControls(forwardPressed, backwardPressed, leftPressed, rightPressed);
+        world.update();
 
-        float cameraX = center + terrainSize * 0.35f;
-        float cameraY = centerHeight + terrainSize * 0.28f;
-        float cameraZ = center + terrainSize * 0.45f;
-        glu.gluLookAt(cameraX, cameraY, cameraZ, center, centerHeight, center, 0.0f, 1.0f, 0.0f);
+        Truck truck = world.getTruck();
+        float cameraDistance = 11.0f;
+        float cameraHeight = 5.0f;
+
+        float headingRadians = (float) Math.toRadians(truck.getAngle());
+        float headingX = (float) Math.sin(headingRadians);
+        float headingZ = (float) Math.cos(headingRadians);
+
+        float cameraX = truck.getX() - headingX * cameraDistance;
+        float cameraY = truck.getY() + cameraHeight;
+        float cameraZ = truck.getZ() - headingZ * cameraDistance;
+
+        float targetX = truck.getX() + headingX * 2.2f;
+        float targetY = truck.getY() + 1.05f;
+        float targetZ = truck.getZ() + headingZ * 2.2f;
+        glu.gluLookAt(cameraX, cameraY, cameraZ, targetX, targetY, targetZ, 0.0f, 1.0f, 0.0f);
 
         world.draw(gl);
 
@@ -107,6 +129,33 @@ public class main extends JFrame implements GLEventListener {
     @Override
     public void dispose(GLAutoDrawable drawable) {
         // Nothing to dispose at this stage.
+    }
+
+    @Override
+    public void keyTyped(KeyEvent e) {
+        // No action needed.
+    }
+
+    @Override
+    public void keyPressed(KeyEvent e) {
+        updateKeyState(e.getKeyCode(), true);
+    }
+
+    @Override
+    public void keyReleased(KeyEvent e) {
+        updateKeyState(e.getKeyCode(), false);
+    }
+
+    private void updateKeyState(int keyCode, boolean pressed) {
+        if (keyCode == KeyEvent.VK_UP) {
+            forwardPressed = pressed;
+        } else if (keyCode == KeyEvent.VK_DOWN) {
+            backwardPressed = pressed;
+        } else if (keyCode == KeyEvent.VK_LEFT) {
+            leftPressed = pressed;
+        } else if (keyCode == KeyEvent.VK_RIGHT) {
+            rightPressed = pressed;
+        }
     }
 
     public static void main(String[] args) {

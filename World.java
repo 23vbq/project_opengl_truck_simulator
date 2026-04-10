@@ -3,19 +3,37 @@ import com.jogamp.opengl.GL2;
 public class World {
 
     private final HeightMap heightMap;
+    private final Truck truck;
     private final float inverseHeightScale;
 
     public World() {
         this.heightMap = new HeightMap();
+        this.truck = new Truck();
         this.inverseHeightScale = 1.0f / Math.max(0.0001f, heightMap.getHeightScale());
+
+        float center = (heightMap.getSize() - 1) * 0.5f;
+        truck.setPosition(center, center);
     }
 
     public HeightMap getHeightMap() {
         return heightMap;
     }
 
+    public Truck getTruck() {
+        return truck;
+    }
+
+    public void update() {
+        truck.update(heightMap);
+    }
+
+    public void setControls(boolean forward, boolean backward, boolean left, boolean right) {
+        truck.setControls(forward, backward, left, right);
+    }
+
     public void draw(GL2 gl) {
         drawTerrain(gl);
+        truck.draw(gl);
     }
 
     private void drawTerrain(GL2 gl) {

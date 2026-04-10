@@ -8,18 +8,349 @@ public class Truck {
     private float speed;
     private float angle;
     private float tilt;
+    private float pitch;
+    private float wheelSpin;
+
+    private boolean forwardPressed;
+    private boolean backwardPressed;
+    private boolean leftPressed;
+    private boolean rightPressed;
+
+    private static final float UPDATE_DT = 1.0f / 60.0f;
+    private static final float MAX_FORWARD_SPEED = 18.0f;
+    private static final float MAX_REVERSE_SPEED = -7.0f;
+    private static final float ACCELERATION = 24.0f;
+    private static final float BRAKE_ACCELERATION = 36.0f;
+    private static final float DRAG = 14.0f;
+    private static final float TURN_RATE = 96.0f;
+    private static final float WHEEL_RADIUS = 0.46f;
+    private static final float WHEEL_CENTER_Y = -0.56f;
+    private static final float WHEEL_HALF_WIDTH = 0.17f;
+    private static final float GROUND_CLEARANCE = 0.015f;
+
+    private static final float[][] WHEEL_OFFSETS = {
+            { -1.05f, 1.25f },
+            { 1.05f, 1.25f },
+            { -1.05f, -0.35f },
+            { 1.05f, -0.35f },
+            { -1.05f, -1.45f },
+            { 1.05f, -1.45f }
+    };
 
     public Truck() {
         this.x = 50.0f;
         this.z = 50.0f;
     }
 
+    public void setPosition(float worldX, float worldZ) {
+        this.x = worldX;
+        this.z = worldZ;
+    }
+
+    public void setControls(boolean forward, boolean backward, boolean left, boolean right) {
+        this.forwardPressed = forward;
+        this.backwardPressed = backward;
+        this.leftPressed = left;
+        this.rightPressed = right;
+    }
+
     public void update(HeightMap heightMap) {
-        this.y = heightMap.getHeight(x, z);
+        updateSpeed();
+        updateSteering();
+        updatePosition(heightMap);
+        updateBodyAlignment(heightMap);
+        updateWheelAnimation();
     }
 
     public void draw(GL2 gl) {
-        // Stage 2 implementation placeholder.
+        gl.glPushMatrix();
+        gl.glTranslatef(x, y, z);
+        gl.glRotatef(angle, 0.0f, 1.0f, 0.0f);
+        gl.glRotatef(pitch, 1.0f, 0.0f, 0.0f);
+        gl.glRotatef(-tilt, 0.0f, 0.0f, 1.0f);
+
+        drawChassis(gl);
+        drawCabin(gl);
+        drawWheels(gl);
+
+        gl.glPopMatrix();
+    }
+
+    private void drawChassis(GL2 gl) {
+        gl.glColor3f(0.18f, 0.18f, 0.20f);
+        drawCuboid(gl, -1.1f, -0.22f, -2.0f, 1.1f, 0.18f, 2.0f);
+
+        gl.glColor3f(0.15f, 0.15f, 0.16f);
+        drawCuboid(gl, -0.92f, -0.42f, -1.75f, 0.92f, -0.18f, 1.75f);
+    }
+
+    private void drawCabin(GL2 gl) {
+        gl.glColor3f(0.80f, 0.09f, 0.09f);
+        drawCuboid(gl, -0.95f, 0.2f, -0.6f, 0.95f, 1.35f, 1.35f);
+
+        gl.glColor3f(0.86f, 0.11f, 0.11f);
+        drawCuboid(gl, -0.95f, 0.5f, 1.35f, 0.95f, 1.12f, 1.85f);
+
+        gl.glColor3f(0.10f, 0.12f, 0.16f);
+        drawCuboid(gl, -0.78f, 0.72f, 1.82f, 0.78f, 1.02f, 1.86f);
+
+        gl.glColor3f(0.80f, 0.09f, 0.09f);
+        drawCuboid(gl, -0.72f, 1.35f, 0.15f, 0.72f, 1.53f, 1.25f);
+
+        gl.glColor3f(0.20f, 0.20f, 0.20f);
+        drawCuboid(gl, -0.50f, 0.25f, -1.85f, 0.50f, 0.45f, -1.35f);
+    }
+
+    private void drawWheels(GL2 gl) {
+        float wheelRadius = WHEEL_RADIUS;
+        float halfWidth = WHEEL_HALF_WIDTH;
+        float wheelCenterY = WHEEL_CENTER_Y;
+
+        gl.glColor3f(0.08f, 0.08f, 0.08f);
+        drawWheel(gl, -1.05f, wheelCenterY, 1.25f, wheelRadius, halfWidth, 18, true);
+        drawWheel(gl, 1.05f, wheelCenterY, 1.25f, wheelRadius, halfWidth, 18, true);
+
+        drawWheel(gl, -1.05f, wheelCenterY, -0.35f, wheelRadius, halfWidth, 18, false);
+        drawWheel(gl, 1.05f, wheelCenterY, -0.35f, wheelRadius, halfWidth, 18, false);
+        drawWheel(gl, -1.05f, wheelCenterY, -1.45f, wheelRadius, halfWidth, 18, false);
+        drawWheel(gl, 1.05f, wheelCenterY, -1.45f, wheelRadius, halfWidth, 18, false);
+    }
+
+    private void drawCuboid(GL2 gl, float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        gl.glBegin(GL2.GL_QUADS);
+
+        gl.glNormal3f(0.0f, 0.0f, 1.0f);
+        gl.glVertex3f(minX, minY, maxZ);
+        gl.glVertex3f(maxX, minY, maxZ);
+        gl.glVertex3f(maxX, maxY, maxZ);
+        gl.glVertex3f(minX, maxY, maxZ);
+
+        gl.glNormal3f(0.0f, 0.0f, -1.0f);
+        gl.glVertex3f(maxX, minY, minZ);
+        gl.glVertex3f(minX, minY, minZ);
+        gl.glVertex3f(minX, maxY, minZ);
+        gl.glVertex3f(maxX, maxY, minZ);
+
+        gl.glNormal3f(-1.0f, 0.0f, 0.0f);
+        gl.glVertex3f(minX, minY, minZ);
+        gl.glVertex3f(minX, minY, maxZ);
+        gl.glVertex3f(minX, maxY, maxZ);
+        gl.glVertex3f(minX, maxY, minZ);
+
+        gl.glNormal3f(1.0f, 0.0f, 0.0f);
+        gl.glVertex3f(maxX, minY, maxZ);
+        gl.glVertex3f(maxX, minY, minZ);
+        gl.glVertex3f(maxX, maxY, minZ);
+        gl.glVertex3f(maxX, maxY, maxZ);
+
+        gl.glNormal3f(0.0f, 1.0f, 0.0f);
+        gl.glVertex3f(minX, maxY, maxZ);
+        gl.glVertex3f(maxX, maxY, maxZ);
+        gl.glVertex3f(maxX, maxY, minZ);
+        gl.glVertex3f(minX, maxY, minZ);
+
+        gl.glNormal3f(0.0f, -1.0f, 0.0f);
+        gl.glVertex3f(minX, minY, minZ);
+        gl.glVertex3f(maxX, minY, minZ);
+        gl.glVertex3f(maxX, minY, maxZ);
+        gl.glVertex3f(minX, minY, maxZ);
+
+        gl.glEnd();
+    }
+
+    private void drawWheel(GL2 gl, float centerX, float centerY, float centerZ, float radius, float halfWidth, int segments,
+            boolean steered) {
+        gl.glPushMatrix();
+        gl.glTranslatef(centerX, centerY, centerZ);
+        if (steered) {
+            float steerVisual = clamp((leftPressed ? 1.0f : 0.0f) - (rightPressed ? 1.0f : 0.0f), -1.0f, 1.0f) * 18.0f;
+            gl.glRotatef(steerVisual, 0.0f, 1.0f, 0.0f);
+        }
+        gl.glRotatef(wheelSpin, 1.0f, 0.0f, 0.0f);
+
+        gl.glBegin(GL2.GL_QUAD_STRIP);
+        for (int i = 0; i <= segments; i++) {
+            double t = (Math.PI * 2.0 * i) / segments;
+            float py = (float) Math.cos(t) * radius;
+            float pz = (float) Math.sin(t) * radius;
+
+            gl.glNormal3f(0.0f, py / radius, pz / radius);
+            gl.glVertex3f(-halfWidth, py, pz);
+            gl.glVertex3f(halfWidth, py, pz);
+        }
+        gl.glEnd();
+
+        gl.glBegin(GL2.GL_TRIANGLE_FAN);
+        gl.glNormal3f(-1.0f, 0.0f, 0.0f);
+        gl.glVertex3f(-halfWidth, 0.0f, 0.0f);
+        for (int i = 0; i <= segments; i++) {
+            double t = (Math.PI * 2.0 * i) / segments;
+            float py = (float) Math.cos(t) * radius;
+            float pz = (float) Math.sin(t) * radius;
+            gl.glVertex3f(-halfWidth, py, pz);
+        }
+        gl.glEnd();
+
+        gl.glBegin(GL2.GL_TRIANGLE_FAN);
+        gl.glNormal3f(1.0f, 0.0f, 0.0f);
+        gl.glVertex3f(halfWidth, 0.0f, 0.0f);
+        for (int i = 0; i <= segments; i++) {
+            double t = (Math.PI * 2.0 * (segments - i)) / segments;
+            float py = (float) Math.cos(t) * radius;
+            float pz = (float) Math.sin(t) * radius;
+            gl.glVertex3f(halfWidth, py, pz);
+        }
+        gl.glEnd();
+
+        gl.glColor3f(0.62f, 0.62f, 0.62f);
+        float hubRadius = radius * 0.35f;
+        gl.glBegin(GL2.GL_TRIANGLE_FAN);
+        gl.glNormal3f(1.0f, 0.0f, 0.0f);
+        gl.glVertex3f(halfWidth + 0.01f, 0.0f, 0.0f);
+        for (int i = 0; i <= segments; i++) {
+            double t = (Math.PI * 2.0 * (segments - i)) / segments;
+            float py = (float) Math.cos(t) * hubRadius;
+            float pz = (float) Math.sin(t) * hubRadius;
+            gl.glVertex3f(halfWidth + 0.01f, py, pz);
+        }
+        gl.glEnd();
+
+        gl.glColor3f(0.08f, 0.08f, 0.08f);
+        gl.glPopMatrix();
+    }
+
+    private void updateSpeed() {
+        if (forwardPressed) {
+            speed += ACCELERATION * UPDATE_DT;
+        }
+
+        if (backwardPressed) {
+            if (speed > 0.0f) {
+                speed -= BRAKE_ACCELERATION * UPDATE_DT;
+            } else {
+                speed -= ACCELERATION * UPDATE_DT;
+            }
+        }
+
+        if (!forwardPressed && !backwardPressed) {
+            if (speed > 0.0f) {
+                speed = Math.max(0.0f, speed - DRAG * UPDATE_DT);
+            } else if (speed < 0.0f) {
+                speed = Math.min(0.0f, speed + DRAG * UPDATE_DT);
+            }
+        }
+
+        speed = clamp(speed, MAX_REVERSE_SPEED, MAX_FORWARD_SPEED);
+    }
+
+    private void updateSteering() {
+        float steerInput = 0.0f;
+        if (leftPressed) {
+            steerInput += 1.0f;
+        }
+        if (rightPressed) {
+            steerInput -= 1.0f;
+        }
+
+        if (Math.abs(speed) > 0.05f && steerInput != 0.0f) {
+            float speedFactor = Math.max(0.25f, Math.min(1.0f, Math.abs(speed) / MAX_FORWARD_SPEED));
+            angle += steerInput * TURN_RATE * speedFactor * UPDATE_DT * (speed >= 0.0f ? 1.0f : -1.0f);
+        }
+    }
+
+    private void updatePosition(HeightMap heightMap) {
+        float headingRadians = (float) Math.toRadians(angle);
+        float dirX = (float) Math.sin(headingRadians);
+        float dirZ = (float) Math.cos(headingRadians);
+
+        x += dirX * speed * UPDATE_DT;
+        z += dirZ * speed * UPDATE_DT;
+
+        float minBound = 2.0f;
+        float maxBound = heightMap.getSize() - 3.0f;
+        x = clamp(x, minBound, maxBound);
+        z = clamp(z, minBound, maxBound);
+    }
+
+    private void updateBodyAlignment(HeightMap heightMap) {
+        float headingRadians = (float) Math.toRadians(angle);
+        float forwardX = (float) Math.sin(headingRadians);
+        float forwardZ = (float) Math.cos(headingRadians);
+        float rightX = (float) Math.cos(headingRadians);
+        float rightZ = (float) -Math.sin(headingRadians);
+
+        float sampleDistance = 1.6f;
+
+        float hCenter = heightMap.getHeight(x, z);
+        float hFront = heightMap.getHeight(x + forwardX * sampleDistance, z + forwardZ * sampleDistance);
+        float hBack = heightMap.getHeight(x - forwardX * sampleDistance, z - forwardZ * sampleDistance);
+        float hRight = heightMap.getHeight(x + rightX * sampleDistance, z + rightZ * sampleDistance);
+        float hLeft = heightMap.getHeight(x - rightX * sampleDistance, z - rightZ * sampleDistance);
+
+        float targetPitch = (float) -Math.toDegrees(Math.atan2(hFront - hBack, sampleDistance * 2.0f));
+        float targetTilt = (float) Math.toDegrees(Math.atan2(hRight - hLeft, sampleDistance * 2.0f));
+
+        pitch = approach(pitch, clamp(targetPitch, -13.0f, 13.0f), 18.0f * UPDATE_DT);
+        tilt = approach(tilt, clamp(targetTilt, -12.0f, 12.0f), 16.0f * UPDATE_DT);
+
+        float supportY = computeSupportBaseHeight(heightMap, forwardX, forwardZ, rightX, rightZ);
+        float fallbackY = hCenter + 0.94f;
+        float targetY = Math.max(supportY, fallbackY);
+
+        if (y < targetY) {
+            y = targetY;
+        } else {
+            y = approach(y, targetY, 20.0f * UPDATE_DT);
+        }
+    }
+
+    private float computeSupportBaseHeight(HeightMap heightMap, float forwardX, float forwardZ, float rightX, float rightZ) {
+        float minWheelLocalY = WHEEL_CENTER_Y - WHEEL_RADIUS;
+        float requiredBaseY = -Float.MAX_VALUE;
+
+        for (int i = 0; i < WHEEL_OFFSETS.length; i++) {
+            float localX = WHEEL_OFFSETS[i][0];
+            float localZ = WHEEL_OFFSETS[i][1];
+
+            float wheelWorldX = x + rightX * localX + forwardX * localZ;
+            float wheelWorldZ = z + rightZ * localX + forwardZ * localZ;
+            float terrainY = heightMap.getHeight(wheelWorldX, wheelWorldZ);
+
+            float localGroundY = transformLocalY(localX, minWheelLocalY, localZ);
+            float wheelRequiredY = terrainY + GROUND_CLEARANCE - localGroundY;
+            requiredBaseY = Math.max(requiredBaseY, wheelRequiredY);
+        }
+
+        return requiredBaseY;
+    }
+
+    private float transformLocalY(float localX, float localY, float localZ) {
+        float rollRadians = (float) Math.toRadians(-tilt);
+        float pitchRadians = (float) Math.toRadians(pitch);
+
+        float yAfterRoll = (float) (localX * Math.sin(rollRadians) + localY * Math.cos(rollRadians));
+
+        float yAfterPitch = (float) (yAfterRoll * Math.cos(pitchRadians) - localZ * Math.sin(pitchRadians));
+        return yAfterPitch;
+    }
+
+    private void updateWheelAnimation() {
+        float wheelCircumference = (float) (Math.PI * 2.0f * WHEEL_RADIUS);
+        wheelSpin += (speed * UPDATE_DT / wheelCircumference) * 360.0f;
+        if (wheelSpin > 360.0f || wheelSpin < -360.0f) {
+            wheelSpin %= 360.0f;
+        }
+    }
+
+    private float approach(float current, float target, float step) {
+        if (current < target) {
+            return Math.min(current + step, target);
+        }
+        return Math.max(current - step, target);
+    }
+
+    private float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     public float getX() {
@@ -44,5 +375,9 @@ public class Truck {
 
     public float getTilt() {
         return tilt;
+    }
+
+    public float getPitch() {
+        return pitch;
     }
 }
