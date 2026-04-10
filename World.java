@@ -44,6 +44,144 @@ public class World {
         truck.draw(gl);
     }
 
+    public void drawCelestialBodies(GL2 gl, float phase) {
+        float sunPhase = phase;
+        float sunAzimuth = (float) Math.PI + sunPhase * (float) Math.PI * 2.0f;
+        float sunElevation = (float) (Math.sin(sunPhase * Math.PI) * Math.PI * 0.45f);
+        float sunDistance = 280.0f;
+        float sunX = (float) (Math.cos(sunAzimuth) * Math.cos(sunElevation)) * sunDistance;
+        float sunY = (float) Math.sin(sunElevation) * sunDistance;
+        float sunZ = (float) (Math.sin(sunAzimuth) * Math.cos(sunElevation)) * sunDistance;
+
+        float sunIntensity = Math.max(0.0f, (float) Math.sin(sunPhase * Math.PI));
+        float moonIntensity = Math.max(0.0f, (float) Math.sin((sunPhase - 0.5f) * Math.PI));
+
+        if (sunIntensity > 0.05f) {
+            drawSun(gl, sunX, sunY, sunZ, sunIntensity);
+        }
+
+        if (moonIntensity > 0.05f) {
+            float moonX = -sunX;
+            float moonY = sunY;
+            float moonZ = -sunZ;
+            drawMoon(gl, moonX, moonY, moonZ, moonIntensity);
+        }
+    }
+
+    private void drawSun(GL2 gl, float x, float y, float z, float intensity) {
+        gl.glDisable(GL2.GL_FOG);
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glPushMatrix();
+        gl.glTranslatef(x, y, z);
+
+        long time = System.currentTimeMillis();
+        float pulse = 1.0f + (float) Math.sin(time * 0.001f) * 0.15f;
+        float sunR = (4.0f + (float) Math.sin(time * 0.0005f) * 0.5f) * pulse;
+        float sunG = (2.4f + (float) Math.sin(time * 0.0003f + 2.0f) * 0.4f) * pulse;
+
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE);
+        
+        // Core sphere - super bright
+        gl.glColor4f(sunR * intensity * 1.4f, sunG * intensity * 1.0f, 0.6f * intensity, 1.0f);
+        drawSphere(gl, 4.2f, 20, 16);
+
+        // Intense inner halo
+        gl.glColor4f(sunR * intensity * 1.1f, sunG * intensity * 0.8f, 0.4f * intensity, 0.85f);
+        drawSphere(gl, 8.5f, 18, 14);
+
+        // Mid-range halo
+        gl.glColor4f(sunR * intensity * 0.8f, sunG * intensity * 0.5f, 0.25f * intensity, 0.65f);
+        drawSphere(gl, 13.5f, 16, 12);
+
+        // Outer halo
+        gl.glColor4f(sunR * intensity * 0.5f, sunG * intensity * 0.3f, 0.15f * intensity, 0.45f);
+        drawSphere(gl, 19.5f, 14, 10);
+
+        // Far halo
+        gl.glColor4f(sunR * intensity * 0.3f, sunG * intensity * 0.15f, 0.08f * intensity, 0.28f);
+        drawSphere(gl, 26.5f, 12, 8);
+
+        // Ultra-far glow
+        gl.glColor4f(sunR * intensity * 0.15f, sunG * intensity * 0.08f, 0.04f * intensity, 0.12f);
+        drawSphere(gl, 34.0f, 10, 6);
+
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glPopMatrix();
+        gl.glEnable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_FOG);
+    }
+
+    private void drawMoon(GL2 gl, float x, float y, float z, float intensity) {
+        gl.glDisable(GL2.GL_FOG);
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glPushMatrix();
+        gl.glTranslatef(x, y, z);
+
+        long time = System.currentTimeMillis();
+        float moonPulse = 1.0f + (float) Math.sin(time * 0.0008f) * 0.08f;
+
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE);
+        
+        // Bright core
+        gl.glColor4f(1.1f * intensity * moonPulse, 1.08f * intensity * moonPulse, 0.95f * intensity * moonPulse, 1.0f);
+        drawSphere(gl, 4.0f, 20, 16);
+
+        // Inner glow
+        gl.glColor4f(1.0f * intensity, 0.98f * intensity, 0.88f * intensity, 0.75f);
+        drawSphere(gl, 8.5f, 18, 14);
+
+        // Mid halo
+        gl.glColor4f(0.95f * intensity, 0.93f * intensity, 0.82f * intensity, 0.55f);
+        drawSphere(gl, 14.0f, 16, 12);
+
+        // Outer halo
+        gl.glColor4f(0.88f * intensity, 0.86f * intensity, 0.75f * intensity, 0.35f);
+        drawSphere(gl, 20.0f, 14, 10);
+
+        // Far glow
+        gl.glColor4f(0.80f * intensity, 0.78f * intensity, 0.68f * intensity, 0.15f);
+        drawSphere(gl, 27.0f, 12, 8);
+
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glPopMatrix();
+        gl.glEnable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_FOG);
+    }
+
+    private void drawSphere(GL2 gl, float radius, int stacks, int slices) {
+        gl.glBegin(GL2.GL_TRIANGLE_STRIP);
+        for (int i = 0; i <= stacks; i++) {
+            float stackAngle = (float) (Math.PI * i / stacks);
+            float stackSin = (float) Math.sin(stackAngle);
+            float stackCos = (float) Math.cos(stackAngle);
+
+            for (int j = 0; j <= slices; j++) {
+                float sliceAngle = (float) (2.0f * Math.PI * j / slices);
+                float sliceSin = (float) Math.sin(sliceAngle);
+                float sliceCos = (float) Math.cos(sliceAngle);
+
+                float nx = sliceCos * stackSin;
+                float ny = stackCos;
+                float nz = sliceSin * stackSin;
+
+                gl.glVertex3f(nx * radius, ny * radius, nz * radius);
+
+                if (i < stacks) {
+                    float nextStackAngle = (float) (Math.PI * (i + 1) / stacks);
+                    float nextStackSin = (float) Math.sin(nextStackAngle);
+                    float nextStackCos = (float) Math.cos(nextStackAngle);
+                    nx = sliceCos * nextStackSin;
+                    ny = nextStackCos;
+                    nz = sliceSin * nextStackSin;
+                    gl.glVertex3f(nx * radius, ny * radius, nz * radius);
+                }
+            }
+        }
+        gl.glEnd();
+    }
+
     private void drawTrees(GL2 gl) {
         for (int i = 0; i < trees.size(); i++) {
             trees.get(i).draw(gl);

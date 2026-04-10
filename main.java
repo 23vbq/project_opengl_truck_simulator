@@ -29,6 +29,14 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     private boolean leftPressed;
     private boolean rightPressed;
 
+    private boolean fogEnabled;
+    private long cycleStartNanos;
+    private float cyclePhaseOffset;
+    private float currentCelestialPhase;
+
+    private static final float DAY_CYCLE_DURATION_SECONDS = 120.0f;
+    private static final float[] KEY_TIMES = { 0.00f, 0.25f, 0.50f, 0.75f, 1.00f };
+
     public main(String title) {
         super(title);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -57,6 +65,9 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         gl = drawable.getGL().getGL2();
         glu = new GLU();
         world = new World();
+        fogEnabled = true;
+        cycleStartNanos = System.nanoTime();
+        cyclePhaseOffset = 0.0f;
 
         gl.glEnable(GL2.GL_DEPTH_TEST);
         gl.glDisable(GL2.GL_CULL_FACE);
@@ -65,6 +76,12 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         gl.glEnable(GL2.GL_LIGHT0);
         gl.glEnable(GL2.GL_COLOR_MATERIAL);
         gl.glColorMaterial(GL2.GL_FRONT_AND_BACK, GL2.GL_AMBIENT_AND_DIFFUSE);
+
+        gl.glFogi(GL2.GL_FOG_MODE, GL2.GL_LINEAR);
+        gl.glHint(GL2.GL_FOG_HINT, GL2.GL_NICEST);
+        gl.glFogf(GL2.GL_FOG_START, 20.0f);
+        gl.glFogf(GL2.GL_FOG_END, 120.0f);
+        gl.glEnable(GL2.GL_FOG);
 
         float[] ambient = { 0.35f, 0.35f, 0.35f, 1.0f };
         float[] diffuse = { 0.9f, 0.9f, 0.9f, 1.0f };
@@ -79,7 +96,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
 
     @Override
     public void display(GLAutoDrawable drawable) {
-        gl.glClearColor(0.58f, 0.79f, 0.98f, 1.0f);
+        applyEnvironmentPreset();
         gl.glClear(GL2.GL_COLOR_BUFFER_BIT | GL2.GL_DEPTH_BUFFER_BIT);
 
         gl.glMatrixMode(GL2.GL_MODELVIEW);
@@ -87,6 +104,9 @@ public class main extends JFrame implements GLEventListener, KeyListener {
 
         world.setControls(forwardPressed, backwardPressed, leftPressed, rightPressed);
         world.update();
+
+        float elapsedSeconds = (System.nanoTime() - cycleStartNanos) / 1_000_000_000.0f;
+        currentCelestialPhase = (elapsedSeconds / DAY_CYCLE_DURATION_SECONDS + cyclePhaseOffset) % 1.0f;
 
         Truck truck = world.getTruck();
         float cameraDistance = 11.0f;
@@ -106,6 +126,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         glu.gluLookAt(cameraX, cameraY, cameraZ, targetX, targetY, targetZ, 0.0f, 1.0f, 0.0f);
 
         world.draw(gl);
+        world.drawCelestialBodies(gl, currentCelestialPhase);
 
         gl.glFlush();
     }
@@ -147,15 +168,124 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     }
 
     private void updateKeyState(int keyCode, boolean pressed) {
-        if (keyCode == KeyEvent.VK_UP) {
+        if (keyCode == KeyEvent.VK_UP || keyCode == KeyEvent.VK_W) {
             forwardPressed = pressed;
-        } else if (keyCode == KeyEvent.VK_DOWN) {
+        } else if (keyCode == KeyEvent.VK_DOWN || keyCode == KeyEvent.VK_S) {
             backwardPressed = pressed;
-        } else if (keyCode == KeyEvent.VK_LEFT) {
+        } else if (keyCode == KeyEvent.VK_LEFT || keyCode == KeyEvent.VK_A) {
             leftPressed = pressed;
-        } else if (keyCode == KeyEvent.VK_RIGHT) {
+        } else if (keyCode == KeyEvent.VK_RIGHT || keyCode == KeyEvent.VK_D) {
             rightPressed = pressed;
+        } else if (keyCode == KeyEvent.VK_T && pressed) {
+            cyclePhaseOffset = (cyclePhaseOffset + 0.25f) % 1.0f;
+        } else if (keyCode == KeyEvent.VK_F && pressed) {
+            fogEnabled = !fogEnabled;
         }
+    }
+
+    private void applyEnvironmentPreset() {
+        float phase = currentCelestialPhase;
+
+        float[][] clearColorKeys = {
+                { 0.72f, 0.64f, 0.53f, 1.0f },
+                { 0.58f, 0.79f, 0.98f, 1.0f },
+                { 0.93f, 0.58f, 0.35f, 1.0f },
+                { 0.07f, 0.10f, 0.18f, 1.0f },
+                { 0.72f, 0.64f, 0.53f, 1.0f }
+        };
+
+        float[][] fogColorKeys = {
+                { 0.70f, 0.60f, 0.50f, 1.0f },
+                { 0.65f, 0.83f, 0.98f, 1.0f },
+                { 0.86f, 0.52f, 0.35f, 1.0f },
+                { 0.08f, 0.11f, 0.18f, 1.0f },
+                { 0.70f, 0.60f, 0.50f, 1.0f }
+        };
+
+        float[][] ambientKeys = {
+                { 0.28f, 0.26f, 0.24f, 1.0f },
+                { 0.35f, 0.35f, 0.35f, 1.0f },
+                { 0.42f, 0.31f, 0.25f, 1.0f },
+                { 0.18f, 0.20f, 0.28f, 1.0f },
+                { 0.28f, 0.26f, 0.24f, 1.0f }
+        };
+
+        float[][] diffuseKeys = {
+                { 0.58f, 0.52f, 0.46f, 1.0f },
+                { 0.90f, 0.90f, 0.90f, 1.0f },
+                { 0.92f, 0.62f, 0.43f, 1.0f },
+                { 0.36f, 0.39f, 0.52f, 1.0f },
+                { 0.58f, 0.52f, 0.46f, 1.0f }
+        };
+
+        float[][] lightPositionKeys = {
+                { -170.0f, 55.0f, 20.0f, 1.0f },
+                { 120.0f, 180.0f, 120.0f, 1.0f },
+                { -140.0f, 75.0f, -65.0f, 1.0f },
+                { 45.0f, 130.0f, -105.0f, 1.0f },
+                { -170.0f, 55.0f, 20.0f, 1.0f }
+        };
+
+        float[] fogStartKeys = { 16.0f, 24.0f, 15.0f, 10.0f, 16.0f };
+        float[] fogEndKeys = { 95.0f, 130.0f, 90.0f, 62.0f, 95.0f };
+
+        float[] clearColor = sampleCycleColor(phase, clearColorKeys);
+        float[] fogColor = sampleCycleColor(phase, fogColorKeys);
+        float[] ambient = sampleCycleColor(phase, ambientKeys);
+        float[] diffuse = sampleCycleColor(phase, diffuseKeys);
+        float[] lightPosition = sampleCycleColor(phase, lightPositionKeys);
+        float fogStart = sampleCycleScalar(phase, fogStartKeys);
+        float fogEnd = sampleCycleScalar(phase, fogEndKeys);
+
+        gl.glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+        gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_AMBIENT, ambient, 0);
+        gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_DIFFUSE, diffuse, 0);
+        gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_POSITION, lightPosition, 0);
+
+        if (fogEnabled) {
+            gl.glEnable(GL2.GL_FOG);
+            gl.glFogf(GL2.GL_FOG_START, fogStart);
+            gl.glFogf(GL2.GL_FOG_END, fogEnd);
+            gl.glFogfv(GL2.GL_FOG_COLOR, fogColor, 0);
+        } else {
+            gl.glDisable(GL2.GL_FOG);
+        }
+    }
+
+    private float[] sampleCycleColor(float phase, float[][] keys) {
+        int index = 0;
+        while (index < KEY_TIMES.length - 2 && phase > KEY_TIMES[index + 1]) {
+            index++;
+        }
+
+        float segmentStart = KEY_TIMES[index];
+        float segmentEnd = KEY_TIMES[index + 1];
+        float t = (phase - segmentStart) / Math.max(0.0001f, segmentEnd - segmentStart);
+
+        float[] a = keys[index];
+        float[] b = keys[index + 1];
+        return new float[] {
+                lerp(a[0], b[0], t),
+                lerp(a[1], b[1], t),
+                lerp(a[2], b[2], t),
+                lerp(a[3], b[3], t)
+        };
+    }
+
+    private float sampleCycleScalar(float phase, float[] keys) {
+        int index = 0;
+        while (index < KEY_TIMES.length - 2 && phase > KEY_TIMES[index + 1]) {
+            index++;
+        }
+
+        float segmentStart = KEY_TIMES[index];
+        float segmentEnd = KEY_TIMES[index + 1];
+        float t = (phase - segmentStart) / Math.max(0.0001f, segmentEnd - segmentStart);
+        return lerp(keys[index], keys[index + 1], t);
+    }
+
+    private float lerp(float a, float b, float t) {
+        return a + (b - a) * t;
     }
 
     public static void main(String[] args) {
