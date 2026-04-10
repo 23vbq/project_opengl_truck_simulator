@@ -15,6 +15,7 @@ public class Truck {
     private float suspensionOffset;
     private float suspensionPhase;
     private float brakeLightIntensity;
+    private final GltfModel importedModel;
 
     private boolean forwardPressed;
     private boolean backwardPressed;
@@ -47,6 +48,7 @@ public class Truck {
     public Truck() {
         this.x = 50.0f;
         this.z = 50.0f;
+        this.importedModel = new GltfModel("scene.gltf");
     }
 
     public void setPosition(float worldX, float worldZ) {
@@ -77,9 +79,13 @@ public class Truck {
         gl.glRotatef(pitch, 1.0f, 0.0f, 0.0f);
         gl.glRotatef(-tilt, 0.0f, 0.0f, 1.0f);
 
-        drawChassis(gl);
-        drawCabin(gl);
-        drawWheels(gl);
+        if (importedModel.isLoaded()) {
+            importedModel.draw(gl);
+        } else {
+            drawChassis(gl);
+            drawCabin(gl);
+            drawWheels(gl);
+        }
 
         gl.glPopMatrix();
     }
@@ -121,25 +127,214 @@ public class Truck {
     }
 
     private void drawCabin(GL2 gl) {
-        gl.glColor3f(0.80f, 0.09f, 0.09f);
-        drawCuboid(gl, -0.95f, 0.2f, -0.6f, 0.95f, 1.35f, 1.35f);
+        // Main red cabin mass.
+        gl.glColor3f(0.78f, 0.08f, 0.08f);
+        drawCuboid(gl, -1.00f, 0.18f, -0.70f, 1.00f, 1.42f, 1.38f);
 
-        gl.glColor3f(0.86f, 0.11f, 0.11f);
-        drawCuboid(gl, -0.95f, 0.5f, 1.35f, 0.95f, 1.12f, 1.85f);
+        // Tall Scania-like front face.
+        gl.glColor3f(0.82f, 0.11f, 0.11f);
+        drawCuboid(gl, -0.97f, 0.50f, 1.36f, 0.97f, 1.33f, 2.00f);
 
+        // Roof spoiler/visor block.
+        gl.glColor3f(0.76f, 0.09f, 0.09f);
+        drawCuboid(gl, -0.80f, 1.40f, 0.08f, 0.80f, 1.64f, 1.34f);
+
+        // Lower center bumper support.
+        gl.glColor3f(0.18f, 0.18f, 0.18f);
+        drawCuboid(gl, -0.56f, 0.22f, -1.92f, 0.56f, 0.45f, -1.33f);
+
+        // Side skirts and door shoulder, helps silhouette look more like modern Scania.
+        gl.glColor3f(0.70f, 0.07f, 0.07f);
+        drawCuboid(gl, -1.02f, 0.36f, -0.08f, -0.92f, 1.30f, 1.30f);
+        drawCuboid(gl, 0.92f, 0.36f, -0.08f, 1.02f, 1.30f, 1.30f);
+
+        gl.glColor3f(0.62f, 0.06f, 0.06f);
+        drawCuboid(gl, -0.98f, 0.70f, 0.76f, 0.98f, 0.78f, 0.90f);
+
+        drawScaniaFrontDetails(gl);
+        drawFrontCornerPanels(gl);
+        drawDoorAndSideDetails(gl);
+        drawStepDetails(gl);
+        drawMirrors(gl);
+        drawRoofLamps(gl);
+        drawCabinGlass(gl);
+    }
+
+    private void drawScaniaFrontDetails(GL2 gl) {
+        // Dark front mask around grille and lights.
+        gl.glColor3f(0.09f, 0.09f, 0.10f);
+        drawCuboid(gl, -0.87f, 0.30f, 2.00f, 0.87f, 1.22f, 2.05f);
+
+        // Metallic frame around the grille area.
+        gl.glColor3f(0.46f, 0.46f, 0.48f);
+        drawCuboid(gl, -0.91f, 0.28f, 1.98f, -0.86f, 1.24f, 2.06f);
+        drawCuboid(gl, 0.86f, 0.28f, 1.98f, 0.91f, 1.24f, 2.06f);
+        drawCuboid(gl, -0.91f, 1.20f, 1.98f, 0.91f, 1.25f, 2.06f);
+        drawCuboid(gl, -0.89f, 0.25f, 1.98f, 0.89f, 0.30f, 2.06f);
+
+        // Top logo shelf (where SCANIA text would be).
+        gl.glColor3f(0.14f, 0.14f, 0.15f);
+        drawCuboid(gl, -0.74f, 1.03f, 2.03f, 0.74f, 1.16f, 2.10f);
+
+        // Bright logo strip.
+        gl.glColor3f(0.86f, 0.86f, 0.86f);
+        drawCuboid(gl, -0.40f, 1.07f, 2.08f, 0.40f, 1.12f, 2.12f);
+
+        // Signature Scania stepped grille bars.
+        float[] widths = { 0.74f, 0.70f, 0.66f, 0.62f, 0.58f, 0.54f };
+        for (int i = 0; i < widths.length; i++) {
+            float y0 = 0.36f + i * 0.11f;
+            float y1 = y0 + 0.07f;
+            float half = widths[i];
+
+            gl.glColor3f(0.18f, 0.18f, 0.19f);
+            drawCuboid(gl, -half, y0, 2.03f, half, y1, 2.08f);
+
+            gl.glColor3f(0.30f, 0.30f, 0.31f);
+            drawCuboid(gl, -(half - 0.04f), y0 + 0.01f, 2.08f, (half - 0.04f), y1 - 0.01f, 2.10f);
+        }
+
+        // Lower bumper modules.
+        gl.glColor3f(0.12f, 0.12f, 0.13f);
+        drawCuboid(gl, -0.88f, 0.18f, 1.98f, 0.88f, 0.32f, 2.07f);
+        drawCuboid(gl, -0.78f, 0.08f, 1.97f, 0.78f, 0.18f, 2.05f);
+
+        // Chrome trim slices in the bumper.
+        gl.glColor3f(0.58f, 0.58f, 0.60f);
+        drawCuboid(gl, -0.66f, 0.20f, 2.07f, 0.66f, 0.23f, 2.10f);
+        drawCuboid(gl, -0.58f, 0.10f, 2.05f, 0.58f, 0.13f, 2.08f);
+
+        // Fog-light housings.
+        gl.glColor3f(0.90f, 0.92f, 0.96f);
+        drawCuboid(gl, -0.70f, 0.12f, 2.02f, -0.48f, 0.19f, 2.08f);
+        drawCuboid(gl, 0.48f, 0.12f, 2.02f, 0.70f, 0.19f, 2.08f);
+
+        // Outer corner light modules.
+        gl.glColor3f(0.92f, 0.70f, 0.26f);
+        drawCuboid(gl, -0.90f, 0.34f, 2.01f, -0.84f, 0.46f, 2.07f);
+        drawCuboid(gl, 0.84f, 0.34f, 2.01f, 0.90f, 0.46f, 2.07f);
+
+        // Headlights.
+        gl.glColor3f(0.93f, 0.95f, 0.98f);
+        drawCuboid(gl, -0.87f, 0.28f, 1.98f, -0.48f, 0.46f, 2.05f);
+        drawCuboid(gl, 0.48f, 0.28f, 1.98f, 0.87f, 0.46f, 2.05f);
+
+        // Upper slim headlight modules.
+        gl.glColor3f(0.88f, 0.90f, 0.94f);
+        drawCuboid(gl, -0.83f, 0.95f, 1.99f, -0.60f, 1.03f, 2.05f);
+        drawCuboid(gl, 0.60f, 0.95f, 1.99f, 0.83f, 1.03f, 2.05f);
+
+        // Daytime running strips.
+        gl.glColor3f(0.86f, 0.88f, 0.92f);
+        drawCuboid(gl, -0.83f, 0.49f, 2.01f, -0.54f, 0.54f, 2.06f);
+        drawCuboid(gl, 0.54f, 0.49f, 2.01f, 0.83f, 0.54f, 2.06f);
+
+        // Small lower model badge block.
+        gl.glColor3f(0.70f, 0.72f, 0.75f);
+        drawCuboid(gl, -0.80f, 0.22f, 2.05f, -0.64f, 0.27f, 2.10f);
+
+        // License plate area.
+        gl.glColor3f(0.16f, 0.16f, 0.17f);
+        drawCuboid(gl, -0.22f, 0.06f, 2.03f, 0.22f, 0.17f, 2.08f);
+
+        // Black sun visor over windshield.
+        gl.glColor3f(0.12f, 0.12f, 0.13f);
+        drawCuboid(gl, -0.94f, 1.12f, 1.92f, 0.94f, 1.32f, 2.02f);
+    }
+
+    private void drawFrontCornerPanels(GL2 gl) {
+        gl.glColor3f(0.68f, 0.08f, 0.08f);
+        drawCuboid(gl, -1.00f, 0.24f, 1.22f, -0.88f, 1.24f, 1.92f);
+        drawCuboid(gl, 0.88f, 0.24f, 1.22f, 1.00f, 1.24f, 1.92f);
+
+        gl.glColor3f(0.22f, 0.22f, 0.23f);
+        drawCuboid(gl, -1.01f, 0.22f, 1.00f, -0.95f, 0.52f, 1.24f);
+        drawCuboid(gl, 0.95f, 0.22f, 1.00f, 1.01f, 0.52f, 1.24f);
+    }
+
+    private void drawDoorAndSideDetails(GL2 gl) {
+        // Door seams.
+        gl.glColor3f(0.18f, 0.02f, 0.02f);
+        drawCuboid(gl, -0.99f, 0.44f, 0.30f, -0.96f, 1.28f, 0.34f);
+        drawCuboid(gl, 0.96f, 0.44f, 0.30f, 0.99f, 1.28f, 0.34f);
+
+        // Handles.
+        gl.glColor3f(0.20f, 0.20f, 0.21f);
+        drawCuboid(gl, -1.02f, 0.86f, 0.74f, -0.95f, 0.92f, 0.90f);
+        drawCuboid(gl, 0.95f, 0.86f, 0.74f, 1.02f, 0.92f, 0.90f);
+
+        // Side intake / trim panel behind front wheel arch region.
+        gl.glColor3f(0.14f, 0.14f, 0.15f);
+        drawCuboid(gl, -1.01f, 0.40f, 1.02f, -0.95f, 0.72f, 1.20f);
+        drawCuboid(gl, 0.95f, 0.40f, 1.02f, 1.01f, 0.72f, 1.20f);
+    }
+
+    private void drawStepDetails(GL2 gl) {
+        // Multi-step lower stair like on real tractors.
+        gl.glColor3f(0.11f, 0.11f, 0.12f);
+        drawCuboid(gl, -1.01f, 0.18f, 0.18f, -0.92f, 0.26f, 0.72f);
+        drawCuboid(gl, -1.02f, 0.28f, 0.22f, -0.92f, 0.36f, 0.70f);
+        drawCuboid(gl, -1.02f, 0.38f, 0.26f, -0.92f, 0.46f, 0.66f);
+
+        drawCuboid(gl, 0.92f, 0.18f, 0.18f, 1.01f, 0.26f, 0.72f);
+        drawCuboid(gl, 0.92f, 0.28f, 0.22f, 1.02f, 0.36f, 0.70f);
+        drawCuboid(gl, 0.92f, 0.38f, 0.26f, 1.02f, 0.46f, 0.66f);
+
+        // Metallic anti-slip edge.
+        gl.glColor3f(0.42f, 0.42f, 0.44f);
+        drawCuboid(gl, -1.01f, 0.46f, 0.26f, -0.92f, 0.48f, 0.66f);
+        drawCuboid(gl, 0.92f, 0.46f, 0.26f, 1.01f, 0.48f, 0.66f);
+    }
+
+    private void drawMirrors(GL2 gl) {
+        // Left mirror arm + housing.
+        gl.glColor3f(0.14f, 0.14f, 0.15f);
+        drawCuboid(gl, -1.10f, 0.88f, 1.08f, -0.99f, 0.95f, 1.76f);
+        drawCuboid(gl, -1.30f, 0.76f, 1.14f, -1.10f, 1.05f, 1.54f);
+        gl.glColor3f(0.10f, 0.10f, 0.11f);
+        drawCuboid(gl, -1.34f, 0.80f, 1.18f, -1.30f, 1.02f, 1.50f);
+
+        // Right mirror arm + housing.
+        gl.glColor3f(0.14f, 0.14f, 0.15f);
+        drawCuboid(gl, 0.99f, 0.88f, 1.08f, 1.10f, 0.95f, 1.76f);
+        drawCuboid(gl, 1.10f, 0.76f, 1.14f, 1.30f, 1.05f, 1.54f);
+        gl.glColor3f(0.10f, 0.10f, 0.11f);
+        drawCuboid(gl, 1.30f, 0.80f, 1.18f, 1.34f, 1.02f, 1.50f);
+    }
+
+    private void drawRoofLamps(GL2 gl) {
+        gl.glColor3f(0.13f, 0.13f, 0.14f);
+        for (int i = -3; i <= 3; i++) {
+            float xPos = i * 0.21f;
+            drawCuboid(gl, xPos - 0.08f, 1.60f, 1.13f, xPos + 0.08f, 1.69f, 1.30f);
+            gl.glColor3f(0.86f, 0.88f, 0.92f);
+            drawCuboid(gl, xPos - 0.05f, 1.62f, 1.28f, xPos + 0.05f, 1.67f, 1.32f);
+            gl.glColor3f(0.13f, 0.13f, 0.14f);
+        }
+    }
+
+    private void drawCabinGlass(GL2 gl) {
         gl.glEnable(GL2.GL_BLEND);
         gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
         gl.glDepthMask(false);
-        gl.glColor4f(0.20f, 0.30f, 0.38f, 0.42f);
-        drawCuboid(gl, -0.78f, 0.72f, 1.82f, 0.78f, 1.02f, 1.86f);
+
+        // Windshield as a slanted quad.
+        gl.glColor4f(0.20f, 0.32f, 0.42f, 0.34f);
+        gl.glBegin(GL2.GL_QUADS);
+        gl.glNormal3f(0.0f, 0.30f, 1.0f);
+        gl.glVertex3f(-0.78f, 0.70f, 1.90f);
+        gl.glVertex3f(0.78f, 0.70f, 1.90f);
+        gl.glVertex3f(0.74f, 1.14f, 1.58f);
+        gl.glVertex3f(-0.74f, 1.14f, 1.58f);
+        gl.glEnd();
+
+        // Side windows.
+        gl.glColor4f(0.19f, 0.30f, 0.40f, 0.32f);
+        drawCuboid(gl, -0.98f, 0.78f, 0.82f, -0.90f, 1.18f, 1.30f);
+        drawCuboid(gl, 0.90f, 0.78f, 0.82f, 0.98f, 1.18f, 1.30f);
+
         gl.glDepthMask(true);
         gl.glDisable(GL2.GL_BLEND);
-
-        gl.glColor3f(0.80f, 0.09f, 0.09f);
-        drawCuboid(gl, -0.72f, 1.35f, 0.15f, 0.72f, 1.53f, 1.25f);
-
-        gl.glColor3f(0.20f, 0.20f, 0.20f);
-        drawCuboid(gl, -0.50f, 0.25f, -1.85f, 0.50f, 0.45f, -1.35f);
     }
 
     private void drawWheels(GL2 gl) {

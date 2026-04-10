@@ -11,3 +11,6 @@
 .project
 .settings/
 /Road.class
+/GltfModel$Primitive.class
+/GltfModel.class
+/GltfModel$JsonParser.class
