@@ -58,11 +58,11 @@ public class Truck {
         this.rightPressed = right;
     }
 
-    public void update(HeightMap heightMap, List<Tree> trees) {
+    public void update(HeightMap heightMap, List<Tree> trees, Road road) {
         updateSpeed();
         updateSteering();
         updatePosition(heightMap, trees);
-        updateBodyAlignment(heightMap);
+        updateBodyAlignment(heightMap, road);
         updateWheelAnimation();
     }
 
@@ -313,7 +313,7 @@ public class Truck {
         return false;
     }
 
-    private void updateBodyAlignment(HeightMap heightMap) {
+    private void updateBodyAlignment(HeightMap heightMap, Road road) {
         float headingRadians = (float) Math.toRadians(angle);
         float forwardX = (float) Math.sin(headingRadians);
         float forwardZ = (float) Math.cos(headingRadians);
@@ -322,8 +322,8 @@ public class Truck {
 
         float sampleDistance = 1.6f;
 
-        float hCenter = heightMap.getHeight(x, z);
-        float[] terrainNormal = computeTerrainNormal(heightMap, sampleDistance);
+        float hCenter = getGroundHeight(heightMap, road, x, z);
+        float[] terrainNormal = computeGroundNormal(heightMap, road, sampleDistance);
         float[] normalInTruckFrame = rotateY(terrainNormal, -headingRadians);
 
         float localX = clamp(normalInTruckFrame[0], -1.0f, 1.0f);
@@ -336,7 +336,7 @@ public class Truck {
         pitch = approach(pitch, clamp(targetPitch, -13.0f, 13.0f), 18.0f * UPDATE_DT);
         tilt = approach(tilt, clamp(targetTilt, -12.0f, 12.0f), 16.0f * UPDATE_DT);
 
-        float supportY = computeSupportBaseHeight(heightMap, forwardX, forwardZ, rightX, rightZ);
+        float supportY = computeSupportBaseHeight(heightMap, road, forwardX, forwardZ, rightX, rightZ);
         float fallbackY = hCenter + 0.94f;
         float targetY = Math.max(supportY, fallbackY);
 
@@ -347,11 +347,20 @@ public class Truck {
         }
     }
 
-    private float[] computeTerrainNormal(HeightMap heightMap, float sampleDistance) {
-        float hL = heightMap.getHeight(x - sampleDistance, z);
-        float hR = heightMap.getHeight(x + sampleDistance, z);
-        float hD = heightMap.getHeight(x, z - sampleDistance);
-        float hU = heightMap.getHeight(x, z + sampleDistance);
+    private float getGroundHeight(HeightMap heightMap, Road road, float sampleX, float sampleZ) {
+        float terrainHeight = heightMap.getHeight(sampleX, sampleZ);
+        float roadHeight = road.getSurfaceHeightAt(heightMap, sampleX, sampleZ);
+        if (!Float.isNaN(roadHeight)) {
+            return Math.max(terrainHeight, roadHeight);
+        }
+        return terrainHeight;
+    }
+
+    private float[] computeGroundNormal(HeightMap heightMap, Road road, float sampleDistance) {
+        float hL = getGroundHeight(heightMap, road, x - sampleDistance, z);
+        float hR = getGroundHeight(heightMap, road, x + sampleDistance, z);
+        float hD = getGroundHeight(heightMap, road, x, z - sampleDistance);
+        float hU = getGroundHeight(heightMap, road, x, z + sampleDistance);
 
         float dYdX = (hR - hL) / (sampleDistance * 2.0f);
         float dYdZ = (hU - hD) / (sampleDistance * 2.0f);
@@ -376,7 +385,7 @@ public class Truck {
         return new float[] { xRot, vector[1], zRot };
     }
 
-    private float computeSupportBaseHeight(HeightMap heightMap, float forwardX, float forwardZ, float rightX, float rightZ) {
+    private float computeSupportBaseHeight(HeightMap heightMap, Road road, float forwardX, float forwardZ, float rightX, float rightZ) {
         float minWheelLocalY = WHEEL_CENTER_Y - WHEEL_RADIUS;
         float requiredBaseY = -Float.MAX_VALUE;
 
@@ -386,7 +395,7 @@ public class Truck {
 
             float wheelWorldX = x + rightX * localX + forwardX * localZ;
             float wheelWorldZ = z + rightZ * localX + forwardZ * localZ;
-            float terrainY = heightMap.getHeight(wheelWorldX, wheelWorldZ);
+            float terrainY = getGroundHeight(heightMap, road, wheelWorldX, wheelWorldZ);
 
             float localGroundY = transformLocalY(localX, minWheelLocalY, localZ);
             float wheelRequiredY = terrainY + GROUND_CLEARANCE - localGroundY;

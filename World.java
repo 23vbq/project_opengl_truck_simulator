@@ -9,12 +9,14 @@ public class World {
     private final HeightMap heightMap;
     private final Truck truck;
     private final List<Tree> trees;
+    private final Road road;
     private final float inverseHeightScale;
 
     public World() {
         this.heightMap = new HeightMap();
         this.truck = new Truck();
         this.trees = new ArrayList<Tree>();
+        this.road = new Road(heightMap);
         this.inverseHeightScale = 1.0f / Math.max(0.0001f, heightMap.getHeightScale());
 
         float center = (heightMap.getSize() - 1) * 0.5f;
@@ -31,7 +33,7 @@ public class World {
     }
 
     public void update() {
-        truck.update(heightMap, trees);
+        truck.update(heightMap, trees, road);
     }
 
     public void setControls(boolean forward, boolean backward, boolean left, boolean right) {
@@ -39,7 +41,9 @@ public class World {
     }
 
     public void draw(GL2 gl) {
+        long time = System.currentTimeMillis();
         drawTerrain(gl);
+        road.draw(gl, heightMap, time);
         drawTrees(gl);
         truck.draw(gl);
     }
@@ -212,6 +216,11 @@ public class World {
             }
 
             if (isTooSteep(x, z)) {
+                continue;
+            }
+            
+            // Omij drogi - drzewa muszą być co najmniej 10 jednostek od drogi
+            if (road.getDistanceToRoad(x, z) < 10.0f) {
                 continue;
             }
 
