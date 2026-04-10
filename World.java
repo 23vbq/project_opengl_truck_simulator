@@ -12,16 +12,49 @@ public class World {
     private final Road road;
     private final float inverseHeightScale;
 
+    private static final int RAIN_PARTICLE_COUNT = 680;
+    private static final int WIND_STREAK_COUNT = 190;
+    private final float[] rainX;
+    private final float[] rainY;
+    private final float[] rainZ;
+    private final float[] rainSpeed;
+    private final float[] windStreakX;
+    private final float[] windStreakY;
+    private final float[] windStreakZ;
+    private final float[] windStreakLife;
+    private final float[] windStreakSpeed;
+    private final float[] windStreakLength;
+    private final Random rainRandom;
+    private long lastRainUpdateNanos;
+    private long lastWindUpdateNanos;
+    private boolean rainEnabled;
+
     public World() {
         this.heightMap = new HeightMap();
         this.truck = new Truck();
         this.trees = new ArrayList<Tree>();
         this.road = new Road(heightMap);
         this.inverseHeightScale = 1.0f / Math.max(0.0001f, heightMap.getHeightScale());
+        this.rainX = new float[RAIN_PARTICLE_COUNT];
+        this.rainY = new float[RAIN_PARTICLE_COUNT];
+        this.rainZ = new float[RAIN_PARTICLE_COUNT];
+        this.rainSpeed = new float[RAIN_PARTICLE_COUNT];
+        this.windStreakX = new float[WIND_STREAK_COUNT];
+        this.windStreakY = new float[WIND_STREAK_COUNT];
+        this.windStreakZ = new float[WIND_STREAK_COUNT];
+        this.windStreakLife = new float[WIND_STREAK_COUNT];
+        this.windStreakSpeed = new float[WIND_STREAK_COUNT];
+        this.windStreakLength = new float[WIND_STREAK_COUNT];
+        this.rainRandom = new Random(2026);
+        this.rainEnabled = false;
+        this.lastRainUpdateNanos = System.nanoTime();
+        this.lastWindUpdateNanos = System.nanoTime();
 
         float center = (heightMap.getSize() - 1) * 0.5f;
         truck.setPosition(center, center);
         generateTrees(center, center);
+        initializeRainParticles();
+        initializeWindStreaks();
     }
 
     public HeightMap getHeightMap() {
@@ -40,12 +73,181 @@ public class World {
         truck.setControls(forward, backward, left, right);
     }
 
+    public void setRainEnabled(boolean enabled) {
+        rainEnabled = enabled;
+    }
+
     public void draw(GL2 gl) {
         long time = System.currentTimeMillis();
         drawTerrain(gl);
         road.draw(gl, heightMap, time);
         drawTrees(gl);
+        drawWindStreaks(gl);
+        drawRain(gl);
         truck.draw(gl);
+    }
+
+    private void initializeRainParticles() {
+        for (int i = 0; i < RAIN_PARTICLE_COUNT; i++) {
+            resetRainParticle(i, true);
+        }
+    }
+
+    private void initializeWindStreaks() {
+        for (int i = 0; i < WIND_STREAK_COUNT; i++) {
+            resetWindStreak(i, true);
+            windStreakLife[i] *= rainRandom.nextFloat();
+        }
+    }
+
+    private void resetRainParticle(int index, boolean randomHeight) {
+        float size = heightMap.getSize();
+        rainX[index] = 2.0f + rainRandom.nextFloat() * (size - 4.0f);
+        rainZ[index] = 2.0f + rainRandom.nextFloat() * (size - 4.0f);
+
+        float terrainY = heightMap.getHeight(rainX[index], rainZ[index]);
+        float spawnHeight = randomHeight ? (10.0f + rainRandom.nextFloat() * 45.0f) : 42.0f;
+        rainY[index] = terrainY + spawnHeight;
+        rainSpeed[index] = 26.0f + rainRandom.nextFloat() * 22.0f;
+    }
+
+    private void resetWindStreak(int index, boolean randomHeight) {
+        float size = heightMap.getSize();
+        windStreakX[index] = 2.0f + rainRandom.nextFloat() * (size - 4.0f);
+        windStreakZ[index] = 2.0f + rainRandom.nextFloat() * (size - 4.0f);
+
+        float terrainY = heightMap.getHeight(windStreakX[index], windStreakZ[index]);
+        float spawnHeight = randomHeight ? (6.0f + rainRandom.nextFloat() * 38.0f) : (12.0f + rainRandom.nextFloat() * 28.0f);
+        windStreakY[index] = terrainY + spawnHeight;
+        windStreakLife[index] = 1.4f + rainRandom.nextFloat() * 2.8f;
+        windStreakSpeed[index] = 8.0f + rainRandom.nextFloat() * 13.0f;
+        windStreakLength[index] = 1.5f + rainRandom.nextFloat() * 2.8f;
+    }
+
+    private void updateRain() {
+        long now = System.nanoTime();
+        float dt = (now - lastRainUpdateNanos) / 1_000_000_000.0f;
+        lastRainUpdateNanos = now;
+
+        dt = Math.max(0.001f, Math.min(dt, 0.05f));
+
+        float windX = (float) Math.sin(now * 0.0000000012f) * 1.8f;
+        float windZ = (float) Math.cos(now * 0.0000000014f) * 1.3f;
+        float size = heightMap.getSize();
+
+        for (int i = 0; i < RAIN_PARTICLE_COUNT; i++) {
+            rainY[i] -= rainSpeed[i] * dt;
+            rainX[i] += windX * dt;
+            rainZ[i] += windZ * dt;
+
+            if (rainX[i] < 1.0f || rainX[i] > size - 2.0f || rainZ[i] < 1.0f || rainZ[i] > size - 2.0f) {
+                resetRainParticle(i, true);
+                continue;
+            }
+
+            float groundY = heightMap.getHeight(rainX[i], rainZ[i]);
+            if (rainY[i] <= groundY + 0.2f) {
+                resetRainParticle(i, false);
+            }
+        }
+    }
+
+    private void updateWindStreaks() {
+        long now = System.nanoTime();
+        float dt = (now - lastWindUpdateNanos) / 1_000_000_000.0f;
+        lastWindUpdateNanos = now;
+
+        dt = Math.max(0.001f, Math.min(dt, 0.05f));
+
+        float baseWindX = (float) Math.sin(now * 0.0000000012f) * 1.8f;
+        float baseWindZ = (float) Math.cos(now * 0.0000000014f) * 1.3f;
+        float size = heightMap.getSize();
+
+        for (int i = 0; i < WIND_STREAK_COUNT; i++) {
+            float gust = 0.7f + (float) Math.sin(now * 0.0000000022f + i * 0.37f) * 0.35f;
+
+            windStreakX[i] += baseWindX * windStreakSpeed[i] * gust * dt;
+            windStreakZ[i] += baseWindZ * windStreakSpeed[i] * gust * dt;
+            windStreakY[i] += (float) Math.sin(now * 0.000000003f + i * 0.2f) * 0.18f * dt;
+            windStreakLife[i] -= dt;
+
+            if (windStreakX[i] < 1.0f || windStreakX[i] > size - 2.0f || windStreakZ[i] < 1.0f || windStreakZ[i] > size - 2.0f
+                    || windStreakLife[i] <= 0.0f) {
+                resetWindStreak(i, false);
+            }
+        }
+    }
+
+    private void drawWindStreaks(GL2 gl) {
+        updateWindStreaks();
+
+        long now = System.nanoTime();
+        float windDirX = (float) Math.sin(now * 0.0000000012f) * 1.8f;
+        float windDirZ = (float) Math.cos(now * 0.0000000014f) * 1.3f;
+        float dirLen = (float) Math.sqrt(windDirX * windDirX + windDirZ * windDirZ);
+        if (dirLen < 0.0001f) {
+            windDirX = 1.0f;
+            windDirZ = 0.0f;
+            dirLen = 1.0f;
+        }
+        windDirX /= dirLen;
+        windDirZ /= dirLen;
+
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glLineWidth(2.6f);
+
+        gl.glBegin(GL2.GL_LINES);
+        for (int i = 0; i < WIND_STREAK_COUNT; i++) {
+            float lifeRatio = Math.max(0.0f, Math.min(1.0f, windStreakLife[i] / 4.0f));
+            float alpha = 0.10f + lifeRatio * 0.23f;
+            float length = windStreakLength[i];
+
+            float x1 = windStreakX[i];
+            float y1 = windStreakY[i];
+            float z1 = windStreakZ[i];
+            float x2 = x1 - windDirX * length;
+            float y2 = y1 + 0.06f;
+            float z2 = z1 - windDirZ * length;
+
+            gl.glColor4f(0.86f, 0.92f, 1.0f, alpha);
+            gl.glVertex3f(x1, y1, z1);
+            gl.glVertex3f(x2, y2, z2);
+        }
+        gl.glEnd();
+
+        gl.glLineWidth(1.0f);
+        gl.glDisable(GL2.GL_BLEND);
+        gl.glEnable(GL2.GL_LIGHTING);
+    }
+
+    private void drawRain(GL2 gl) {
+        if (!rainEnabled) {
+            return;
+        }
+
+        updateRain();
+
+        long now = System.nanoTime();
+        float windX = (float) Math.sin(now * 0.0000000012f) * 1.8f;
+        float windZ = (float) Math.cos(now * 0.0000000014f) * 1.3f;
+        float tailY = 0.75f;
+
+        gl.glDisable(GL2.GL_LIGHTING);
+        gl.glEnable(GL2.GL_BLEND);
+        gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+        gl.glColor4f(0.74f, 0.84f, 1.0f, 0.48f);
+
+        gl.glBegin(GL2.GL_LINES);
+        for (int i = 0; i < RAIN_PARTICLE_COUNT; i++) {
+            gl.glVertex3f(rainX[i], rainY[i], rainZ[i]);
+            gl.glVertex3f(rainX[i] - windX * 0.06f, rainY[i] + tailY, rainZ[i] - windZ * 0.06f);
+        }
+        gl.glEnd();
+
+        gl.glDisable(GL2.GL_BLEND);
+        gl.glEnable(GL2.GL_LIGHTING);
     }
 
     public void drawCelestialBodies(GL2 gl, float phase) {

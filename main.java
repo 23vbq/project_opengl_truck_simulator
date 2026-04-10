@@ -30,6 +30,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     private boolean rightPressed;
 
     private boolean fogEnabled;
+    private boolean rainEnabled;
     private long cycleStartNanos;
     private float cyclePhaseOffset;
     private float currentCelestialPhase;
@@ -66,6 +67,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         glu = new GLU();
         world = new World();
         fogEnabled = true;
+        rainEnabled = false;
         cycleStartNanos = System.nanoTime();
         cyclePhaseOffset = 0.0f;
 
@@ -103,6 +105,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         gl.glLoadIdentity();
 
         world.setControls(forwardPressed, backwardPressed, leftPressed, rightPressed);
+        world.setRainEnabled(rainEnabled);
         world.update();
 
         float elapsedSeconds = (System.nanoTime() - cycleStartNanos) / 1_000_000_000.0f;
@@ -180,6 +183,8 @@ public class main extends JFrame implements GLEventListener, KeyListener {
             cyclePhaseOffset = (cyclePhaseOffset + 0.25f) % 1.0f;
         } else if (keyCode == KeyEvent.VK_F && pressed) {
             fogEnabled = !fogEnabled;
+        } else if (keyCode == KeyEvent.VK_R && pressed) {
+            rainEnabled = !rainEnabled;
         }
     }
 
