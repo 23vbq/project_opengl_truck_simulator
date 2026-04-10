@@ -113,11 +113,11 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         gl.glLightfv(GL2.GL_LIGHT1, GL2.GL_SPECULAR, headSpecular, 0);
         gl.glLightfv(GL2.GL_LIGHT1, GL2.GL_POSITION, headPos, 0);
         gl.glLightfv(GL2.GL_LIGHT1, GL2.GL_SPOT_DIRECTION, headDir, 0);
-        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_SPOT_CUTOFF, 28.0f);
-        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_SPOT_EXPONENT, 18.0f);
+        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_SPOT_CUTOFF, 36.0f);
+        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_SPOT_EXPONENT, 9.0f);
         gl.glLightf(GL2.GL_LIGHT1, GL2.GL_CONSTANT_ATTENUATION, 1.0f);
-        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_LINEAR_ATTENUATION, 0.055f);
-        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_QUADRATIC_ATTENUATION, 0.008f);
+        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_LINEAR_ATTENUATION, 0.028f);
+        gl.glLightf(GL2.GL_LIGHT1, GL2.GL_QUADRATIC_ATTENUATION, 0.0035f);
 
         textRenderer = new TextRenderer(new Font("Monospaced", Font.PLAIN, 14), true, true);
 
@@ -139,6 +139,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
 
         float elapsedSeconds = (System.nanoTime() - cycleStartNanos) / 1_000_000_000.0f;
         currentCelestialPhase = (elapsedSeconds / DAY_CYCLE_DURATION_SECONDS + cyclePhaseOffset) % 1.0f;
+        world.setSkyPhase(currentCelestialPhase);
 
         Truck truck = world.getTruck();
         truck.setHeadlightsEnabled(headlightsEnabled);
@@ -156,8 +157,8 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         float targetZ;
 
         if (cabinViewEnabled) {
-            float seatLocalX = truck.isUsingImportedModel() ? -0.95f : 0.0f;
-            float seatLocalY = truck.isUsingImportedModel() ? 1.60f : 1.30f;
+            float seatLocalX = truck.isUsingImportedModel() ? 0.7f : 0.0f;
+            float seatLocalY = truck.isUsingImportedModel() ? 1.82f : 1.30f;
             float seatLocalZ = truck.isUsingImportedModel() ? 2.45f : 1.64f;
             float lookDistance = truck.isUsingImportedModel() ? 34.0f : 22.0f;
 
@@ -347,7 +348,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
                 { 0.72f, 0.64f, 0.53f, 1.0f },
                 { 0.58f, 0.79f, 0.98f, 1.0f },
                 { 0.93f, 0.58f, 0.35f, 1.0f },
-            { 0.02f, 0.03f, 0.06f, 1.0f },
+            { 0.008f, 0.010f, 0.018f, 1.0f },
                 { 0.72f, 0.64f, 0.53f, 1.0f }
         };
 
@@ -355,7 +356,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
                 { 0.70f, 0.60f, 0.50f, 1.0f },
                 { 0.65f, 0.83f, 0.98f, 1.0f },
                 { 0.86f, 0.52f, 0.35f, 1.0f },
-            { 0.012f, 0.015f, 0.028f, 1.0f },
+            { 0.006f, 0.008f, 0.015f, 1.0f },
                 { 0.70f, 0.60f, 0.50f, 1.0f }
         };
 
@@ -363,7 +364,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
                 { 0.28f, 0.26f, 0.24f, 1.0f },
                 { 0.35f, 0.35f, 0.35f, 1.0f },
                 { 0.42f, 0.31f, 0.25f, 1.0f },
-            { 0.014f, 0.014f, 0.022f, 1.0f },
+            { 0.008f, 0.008f, 0.014f, 1.0f },
                 { 0.28f, 0.26f, 0.24f, 1.0f }
         };
 
@@ -371,7 +372,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
                 { 0.58f, 0.52f, 0.46f, 1.0f },
                 { 0.90f, 0.90f, 0.90f, 1.0f },
                 { 0.92f, 0.62f, 0.43f, 1.0f },
-            { 0.045f, 0.050f, 0.078f, 1.0f },
+            { 0.022f, 0.025f, 0.040f, 1.0f },
                 { 0.58f, 0.52f, 0.46f, 1.0f }
         };
 
@@ -397,7 +398,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         float nightWidth = 0.23f;
         float nightDistance = Math.abs(phase - nightCenter);
         currentNightFactor = clamp01(1.0f - nightDistance / nightWidth);
-        currentHeadlightIntensity = headlightsEnabled ? (0.85f + currentNightFactor * 2.05f) : 0.0f;
+        currentHeadlightIntensity = headlightsEnabled ? (1.20f + currentNightFactor * 3.20f) : 0.0f;
 
         gl.glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
         gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_AMBIENT, ambient, 0);
@@ -415,18 +416,18 @@ public class main extends JFrame implements GLEventListener, KeyListener {
     }
 
         private void applyTruckHeadlights(Truck truck, float headingX, float headingZ) {
-        float intensity = Math.max(0.0f, Math.min(3.0f, currentHeadlightIntensity));
+        float intensity = Math.max(0.0f, Math.min(4.5f, currentHeadlightIntensity));
 
         float[] diffuse = {
-            1.35f * intensity,
-            1.28f * intensity,
-            1.12f * intensity,
+            1.85f * intensity,
+            1.72f * intensity,
+            1.45f * intensity,
             1.0f
         };
         float[] specular = {
-            0.95f * intensity,
-            0.90f * intensity,
-            0.78f * intensity,
+            1.20f * intensity,
+            1.10f * intensity,
+            0.92f * intensity,
             1.0f
         };
 
@@ -438,7 +439,7 @@ public class main extends JFrame implements GLEventListener, KeyListener {
         };
         float[] dir = {
             headingX,
-            -0.18f,
+            -0.14f,
             headingZ
         };
 

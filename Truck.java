@@ -231,6 +231,21 @@ public class Truck {
             reverseGlowY1 = -0.30f;
             reverseGlowZ0 = -4.27f;
             reverseGlowZ1 = -4.02f;
+
+            // Align rear lights with the imported chassis end.
+            float rearLightForwardShift = 0.34f;
+            rearZ0 += rearLightForwardShift;
+            rearZ1 += rearLightForwardShift;
+            rearGlowZ0 += rearLightForwardShift;
+            rearGlowZ1 += rearLightForwardShift;
+            stopZ0 += rearLightForwardShift;
+            stopZ1 += rearLightForwardShift;
+            stopGlowZ0 += rearLightForwardShift;
+            stopGlowZ1 += rearLightForwardShift;
+            reverseZ0 += rearLightForwardShift;
+            reverseZ1 += rearLightForwardShift;
+            reverseGlowZ0 += rearLightForwardShift;
+            reverseGlowZ1 += rearLightForwardShift;
         }
 
         gl.glDisable(GL2.GL_LIGHTING);
@@ -280,6 +295,12 @@ public class Truck {
         float indicatorLeftX1 = imported ? -1.12f : -0.94f;
         float indicatorRightX0 = imported ? 1.12f : 0.94f;
         float indicatorRightX1 = imported ? 1.22f : 1.02f;
+
+        if (imported) {
+            float rearIndicatorForwardShift = 0.34f;
+            indicatorZ0 += rearIndicatorForwardShift;
+            indicatorZ1 += rearIndicatorForwardShift;
+        }
 
         gl.glColor3f(indicatorLeftBase, 0.32f * indicatorLeftBase, 0.02f);
         drawCuboid(gl, indicatorLeftX0, indicatorY0, indicatorZ0, indicatorLeftX1, indicatorY1, indicatorZ1);
