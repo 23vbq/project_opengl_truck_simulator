@@ -67,4 +67,5 @@ A 3D truck driving simulator built from scratch in **Java + JOGL (OpenGL)** in i
 2. Download [jogamp-all-platforms.7z](https://jogamp.org/deployment/archive/rc/)
 3. In Eclipse: **Build Path → Add Library → User Library**, add `gluegen-rt.jar` and `jogl-all.jar` under **Classpath** (not Modulepath)
 4. Set compiler compliance to **1.8** (**Project → Properties → Java Compiler**)
-5. Run `main.java`
+5. Move the `models` directory into the same directory as the compiled `.class` files (usually `bin/`)
+6. Run `main.java`
